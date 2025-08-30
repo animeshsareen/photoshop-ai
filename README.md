@@ -1,30 +1,111 @@
-# Gemini image edits
+# AI Photo Editor
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+An AI-powered photo editing application that allows users to edit photos using natural language descriptions.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/sareenanimesh-9627s-projects/v0-gemini-image-edits)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/ls5TQxSWqUu)
+## Features
 
-## Overview
+- **Google OAuth Authentication**: Secure sign-in with Google accounts
+- **AI Photo Editing**: Edit photos using natural language prompts
+- **Multiple Image Support**: Upload and process multiple images at once
+- **Credit System**: Pay-per-use credit system for AI operations
+- **Responsive Design**: Modern UI that works on all devices
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+## Getting Started
 
-## Deployment
+### Prerequisites
 
-Your project is live at:
+- Node.js 18+ 
+- npm or pnpm
+- Google OAuth credentials
 
-**[https://vercel.com/sareenanimesh-9627s-projects/v0-gemini-image-edits](https://vercel.com/sareenanimesh-9627s-projects/v0-gemini-image-edits)**
+### Installation
 
-## Build your app
+1. Clone the repository:
+```bash
+git clone <your-repo-url>
+cd ai-photo-editor
+```
 
-Continue building your app on:
+2. Install dependencies:
+```bash
+npm install
+```
 
-**[https://v0.app/chat/projects/ls5TQxSWqUu](https://v0.app/chat/projects/ls5TQxSWqUu)**
+3. Set up environment variables:
+   - Copy `env.example` to `.env.local`
+   - Fill in your Google OAuth credentials
 
-## How It Works
+### Google OAuth Setup
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google+ API
+4. Go to "Credentials" and create an "OAuth 2.0 Client ID"
+5. Set the authorized redirect URI to: `http://localhost:3000/api/auth/callback/google`
+6. Copy the Client ID and Client Secret to your `.env.local` file
+
+### Environment Variables
+
+Create a `.env.local` file in the root directory:
+
+```env
+# NextAuth Configuration
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-secret-key-here-change-in-production
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+### Running the Application
+
+1. Start the development server:
+```bash
+npm run dev
+```
+
+2. Open [http://localhost:3000](http://localhost:3000) in your browser
+3. Sign in with your Google account
+4. Start editing photos!
+
+## Usage
+
+1. **Sign In**: Use your Google account to authenticate
+2. **Upload Images**: Drag and drop or select multiple images
+3. **Describe Edit**: Write a natural language description of what you want
+4. **Generate**: Click generate to create your AI-edited image
+5. **Download**: Save your edited image
+
+## API Routes
+
+- `/api/auth/[...nextauth]` - NextAuth.js authentication endpoints
+- `/api/edit-image` - AI image editing endpoint (protected)
+- `/api/create-payment-intent` - Payment processing (protected)
+
+## Technologies Used
+
+- **Next.js 15** - React framework
+- **NextAuth.js** - Authentication
+- **Google OAuth** - Google sign-in
+- **Tailwind CSS** - Styling
+- **Radix UI** - UI components
+- **Google Gemini AI** - Image processing
+
+## Security Features
+
+- Protected API routes with authentication middleware
+- Secure session management
+- OAuth 2.0 authentication flow
+- Environment variable protection
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License.
