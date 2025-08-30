@@ -6,7 +6,7 @@ import { useEffect } from "react"
 import LandingPage from "./landing/page"
 
 export default function RootPage() {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth(false) // Don't require auth on landing page
   const router = useRouter()
 
   useEffect(() => {

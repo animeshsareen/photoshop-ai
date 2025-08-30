@@ -14,11 +14,17 @@ export default function SignIn() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const session = await getSession()
-      if (session) {
-        router.push("/")
+      try {
+        const session = await getSession()
+        if (session) {
+          router.push("/app")
+        }
+      } catch (error) {
+        console.error("Session check error:", error)
+        // Continue to show sign-in page if there's an error
+      } finally {
+        setIsCheckingSession(false)
       }
-      setIsCheckingSession(false)
     }
     checkSession()
   }, [router])
@@ -26,7 +32,7 @@ export default function SignIn() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
     try {
-      await signIn("google", { callbackUrl: "/" })
+      await signIn("google", { callbackUrl: "/app" })
     } catch (error) {
       console.error("Sign in error:", error)
       setIsLoading(false)

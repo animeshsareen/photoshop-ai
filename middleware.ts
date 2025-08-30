@@ -1,18 +1,13 @@
-import { withAuth } from "next-auth/middleware"
+import { auth } from "@/lib/auth"
 
-export default withAuth(
-  function middleware(req) {
-    // Add any additional middleware logic here if needed
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-  }
-)
+export default auth((req) => {
+  // Add any additional middleware logic here if needed
+  return null
+})
 
 export const config = {
   matcher: [
+    "/app/:path*",
     "/api/edit-image/:path*",
     "/api/create-payment-intent/:path*",
     // Add other protected routes here
