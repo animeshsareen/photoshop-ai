@@ -55,6 +55,42 @@ function PhotoEditorContent() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const fileInputYouRef = useRef<HTMLInputElement>(null)
   const fileInputClothingRef = useRef<HTMLInputElement>(null)
+  // Clothing search state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string | null }>>([])
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!searchQuery.trim()) return
+    setIsSearching(true)
+    setSearchError(null)
+    try {
+      const res = await fetch(`/api/search-clothing?q=${encodeURIComponent(searchQuery)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`)
+      setResults(data.items || [])
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const selectRemoteImage = async (imgUrl: string, title: string) => {
+    // Fetch image as blob then convert to File to reuse existing pipeline
+    try {
+      const r = await fetch(imgUrl)
+      const b = await r.blob()
+      const file = new File([b], title.replace(/[^a-z0-9]+/gi,'_').slice(0,40) + '.jpg', { type: b.type || 'image/jpeg' })
+      await processSingleFile(file, 'clothing')
+      // Scroll to clothing card
+      document.getElementById('clothing-upload-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } catch (e) {
+      setUploadError('Failed to load remote image')
+    }
+  }
 
   useEffect(() => {
     setCredits(getCredits())
@@ -173,12 +209,18 @@ function PhotoEditorContent() {
   const getTotalSize = () => { const sizes = [youImage, clothingImage].filter(Boolean).map(img => (img as SelectedImage).compressedSize || (img as SelectedImage).originalSize); return sizes.reduce((a,b)=>a+b,0) }
 
   // Estimate generation duration (seconds) based on combined input size.
-  // Simple heuristic: base 8s + 3s per MB, capped at 60s, min 6s.
+  // Previous heuristic was conservative (8s + 3s/MB, min 6, max 60) which made the timer feel slow.
+  // New heuristic assumes higher effective throughput so the countdown starts lower & feels snappier:
+  //   base 5s + 1.6s per MB, clamped to [4s, 45s].
+  // For very tiny inputs (<0.5 MB) we just return the base. Adjust here if real timings shift.
   const estimateGenerationDuration = (totalBytes: number) => {
-    if (!totalBytes) return 8
+    if (!totalBytes) return 5
     const mb = totalBytes / (1024 * 1024)
-    const est = 8 + mb * 3
-    return Math.min(60, Math.max(6, est))
+    const base = 5
+    const perMb = 1.6
+    let est = base + mb * perMb
+    if (mb < 0.5) est = base
+    return Math.min(45, Math.max(4, est))
   }
 
   // Interval to update progress + remaining seconds
@@ -261,7 +303,7 @@ function PhotoEditorContent() {
                       </div>
                     </CardContent>
                   </Card>
-                  <Card className="border-border hover:border-primary/50 transition-colors">
+                  <Card id="clothing-upload-card" className="border-border hover:border-primary/50 transition-colors">
                     <CardContent className="p-5">
                       <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('clothing')} onClick={() => fileInputClothingRef.current?.click()}>
                         <h4 className="text-md font-semibold text-foreground mb-3">Clothing</h4>
@@ -291,6 +333,40 @@ function PhotoEditorContent() {
                     </CardContent>
                   </Card>
                 </div>
+                {/* Clothing search section */}
+                <Card className="border-border">
+                  <CardContent className="p-5 space-y-4">
+                    <h4 className="text-md font-semibold">Find Clothing by Description</h4>
+                    <form onSubmit={handleSearch} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. slim-fit black turtleneck sweater"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <Button type="submit" disabled={isSearching || !searchQuery.trim()} variant="secondary">{isSearching ? (<><Loader2 className="h-4 w-4 animate-spin mr-2"/>Searching</>) : 'Search'}</Button>
+                    </form>
+                    {searchError && <p className="text-xs text-destructive">{searchError}</p>}
+                    {results.length > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        {results.map((r, i) => (
+                          <button key={i} type="button" onClick={() => selectRemoteImage(r.image, r.title)} className="group relative border rounded-lg overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={r.image} alt={r.title} className="w-full h-28 object-cover transition-transform group-hover:scale-105" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs text-white p-2 text-center">
+                              Use
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {!isSearching && results.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No results yet. Try describing the garment you want.</p>
+                    )}
+                    {isSearching && <p className="text-xs text-muted-foreground">Searching...</p>}
+                  </CardContent>
+                </Card>
                 {(youImage && clothingImage) && (
                   <Card>
                     <CardContent className="p-6 space-y-4">
