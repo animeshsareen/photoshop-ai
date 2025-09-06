@@ -27,12 +27,16 @@ export async function POST(req: Request) {
   try {
     const secret = process.env.STRIPE_SECRET_KEY
     const price = process.env.STRIPE_PRICE_ID
+  const debug = process.env.DEBUG_CHECKOUT === "1"
 
     if (!secret) {
-      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 })
+      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY", code: "ENV_MISSING_SECRET" }, { status: 500 })
     }
     if (!price) {
-      return NextResponse.json({ error: "Missing STRIPE_PRICE_ID" }, { status: 500 })
+      return NextResponse.json({ error: "Missing STRIPE_PRICE_ID", code: "ENV_MISSING_PRICE" }, { status: 500 })
+    }
+    if (!price.startsWith("price_")) {
+      return NextResponse.json({ error: "Invalid STRIPE_PRICE_ID format", code: "ENV_BAD_PRICE_FORMAT" }, { status: 500 })
     }
 
     const stripe = new Stripe(secret, { apiVersion: "2024-06-20" })
@@ -69,12 +73,20 @@ export async function POST(req: Request) {
           resolvedBaseUrl: baseUrl,
         },
       })
-      throw stripeErr
+      return NextResponse.json({
+        error: "Stripe session creation failed",
+        code: "STRIPE_API_ERROR",
+        stripe: debug ? {
+          message: stripeErr?.message,
+          type: stripeErr?.type,
+          code: stripeErr?.code,
+        } : undefined,
+      }, { status: 500 })
     }
 
     return NextResponse.json({ id: session.id, url: session.url })
   } catch (error) {
     console.error("Error creating Stripe Checkout Session", error)
-    return NextResponse.json({ error: "Unable to start checkout" }, { status: 500 })
+    return NextResponse.json({ error: "Unable to start checkout", code: "UNKNOWN_ERROR" }, { status: 500 })
   }
 }
