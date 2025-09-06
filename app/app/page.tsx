@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 // Textarea removed for virtual try-on flow
 import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from "lucide-react"
 import Image from "next/image"
@@ -47,6 +48,11 @@ function PhotoEditorContent() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
+  // Progress / ETA tracking for generation
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null)
+  const [estimatedDuration, setEstimatedDuration] = useState<number>(0) // seconds
+  const [progress, setProgress] = useState(0)
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const fileInputYouRef = useRef<HTMLInputElement>(null)
   const fileInputClothingRef = useRef<HTMLInputElement>(null)
 
@@ -134,6 +140,13 @@ function PhotoEditorContent() {
     const totalCost = CREDIT_COST_PER_EDIT
     const currentCredits = getCredits()
     if (currentCredits < totalCost) { alert(`Insufficient credits! You need ${totalCost} credit to generate.`); return }
+    // Estimate duration before starting call
+    const totalSize = getTotalSize()
+    const est = estimateGenerationDuration(totalSize)
+    setEstimatedDuration(est)
+    setGenerationStartTime(Date.now())
+    setProgress(0)
+    setRemainingSeconds(est)
     setIsProcessing(true)
     try {
       const formData = new FormData()
@@ -144,12 +157,53 @@ function PhotoEditorContent() {
       if (!apiResponse.ok) { const errorData = await apiResponse.json(); throw new Error(errorData.error || `Failed: ${apiResponse.status}`) }
       const result = await apiResponse.json(); setEditedImage(result.editedImageUrl)
       if (deductCredits(totalCost)) { setCredits(getCredits()); window.dispatchEvent(new Event("creditsUpdated")) }
-    } catch (error) { console.error("Error editing images:", error); alert(error instanceof Error ? error.message : 'Failed to edit images.') }
-    finally { setIsProcessing(false) }
+      // Force completion state
+      setProgress(100)
+      setRemainingSeconds(0)
+    } catch (error) { 
+      console.error("Error editing images:", error); 
+      alert(error instanceof Error ? error.message : 'Failed to edit images.') 
+    }
+    finally { 
+      setIsProcessing(false) 
+    }
   }
 
   const downloadEditedImage = () => { if (!editedImage) return; const link = document.createElement('a'); link.href = editedImage; link.download = 'ai-edited-image.png'; document.body.appendChild(link); link.click(); document.body.removeChild(link) }
   const getTotalSize = () => { const sizes = [youImage, clothingImage].filter(Boolean).map(img => (img as SelectedImage).compressedSize || (img as SelectedImage).originalSize); return sizes.reduce((a,b)=>a+b,0) }
+
+  // Estimate generation duration (seconds) based on combined input size.
+  // Simple heuristic: base 8s + 3s per MB, capped at 60s, min 6s.
+  const estimateGenerationDuration = (totalBytes: number) => {
+    if (!totalBytes) return 8
+    const mb = totalBytes / (1024 * 1024)
+    const est = 8 + mb * 3
+    return Math.min(60, Math.max(6, est))
+  }
+
+  // Interval to update progress + remaining seconds
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null
+    if (isProcessing && generationStartTime) {
+      interval = setInterval(() => {
+        const elapsed = (Date.now() - generationStartTime) / 1000
+        if (estimatedDuration > 0) {
+          const pct = Math.min(99, (elapsed / estimatedDuration) * 100) // keep at <100 until completion
+          setProgress(pct)
+          const remaining = Math.max(0, Math.ceil(estimatedDuration - elapsed))
+          setRemainingSeconds(remaining)
+        }
+      }, 500)
+    } else {
+      // reset when not processing
+      if (!isProcessing) {
+        setProgress(0)
+        setRemainingSeconds(null)
+        setGenerationStartTime(null)
+      }
+    }
+    return () => { if (interval) clearInterval(interval) }
+  }, [isProcessing, generationStartTime, estimatedDuration])
 
   return (
       <div className="min-h-screen bg-background p-4">
@@ -240,9 +294,19 @@ function PhotoEditorContent() {
                 {(youImage && clothingImage) && (
                   <Card>
                     <CardContent className="p-6 space-y-4">
-                      <Button onClick={handleEditImages} disabled={isProcessing || credits < CREDIT_COST_PER_EDIT} className="w-full" size="lg">
-                        {isProcessing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating edited image...</>) : (<><Wand2 className="mr-2 h-4 w-4" />Try On Outfit ({CREDIT_COST_PER_EDIT} credit)</>)}
-                      </Button>
+                      <div className="space-y-3">
+                        <Button onClick={handleEditImages} disabled={isProcessing || credits < CREDIT_COST_PER_EDIT} className="w-full" size="lg">
+                          {isProcessing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating image...</>) : (<><Wand2 className="mr-2 h-4 w-4" />Try On Outfit ({CREDIT_COST_PER_EDIT} credit)</>)}
+                        </Button>
+                        {isProcessing && (
+                          <div className="space-y-1" aria-live="polite">
+                            <Progress value={progress} className="h-2" />
+                            <p className="text-xs text-muted-foreground text-center">
+                              {progress.toFixed(0)}% {remainingSeconds !== null && remainingSeconds > 0 ? `• ~${remainingSeconds}s left` : remainingSeconds === 0 ? '• Finalizing...' : ''}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                       {credits < CREDIT_COST_PER_EDIT && (<p className="text-sm text-destructive text-center">Insufficient credits. You need {CREDIT_COST_PER_EDIT} credit.</p>)}
                     </CardContent>
                   </Card>
@@ -253,7 +317,19 @@ function PhotoEditorContent() {
                   <CardContent className="p-6 flex-1 flex flex-col">
                     <h3 className="text-lg font-semibold text-foreground mb-4 text-center">AI Generated Result</h3>
                     <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                      {editedImage ? (<Image src={editedImage} alt="AI edited image" fill className="object-cover" />) : (<div className="text-sm text-muted-foreground text-center px-4">{youImage && clothingImage ? 'Click "Try On Outfit" to generate the result.' : 'Upload both images to see the virtual try-on result here.'}</div>)}
+                      {editedImage ? (
+                        <Image src={editedImage} alt="AI edited image" fill className="object-cover" />
+                      ) : isProcessing ? (
+                        <div className="flex flex-col items-center gap-3 w-full px-8">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                          <Progress value={progress} className="w-full h-2" />
+                          <p className="text-xs text-muted-foreground">
+                            Generating... {progress.toFixed(0)}%{remainingSeconds !== null && remainingSeconds > 0 ? ` • ~${remainingSeconds}s remaining` : remainingSeconds === 0 ? ' • Finalizing...' : ''}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground text-center px-4">{youImage && clothingImage ? 'Click "Try On Outfit" to generate the result.' : 'Upload both images to see the virtual try-on result here.'}</div>
+                      )}
                     </div>
                     {editedImage && (
                       <div className="mt-4 flex justify-center">
