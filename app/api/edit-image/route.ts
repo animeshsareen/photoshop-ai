@@ -146,22 +146,27 @@ export async function POST(request: NextRequest) {
       model: "gemini-2.5-flash-image-preview", // Use the working model name
     })
 
-  const baseSystemPrompt = `You are a virtual fashion try-on assistant. There are exactly TWO input images:
-  1) A PERSON photo (the model) – preserve identity, body shape, pose, lighting and background.
-  2) A GARMENT photo – apply ONLY this clothing item onto the person realistically.
+  const baseSystemPrompt = `You are a virtual fashion try-on assistant. You will always receive exactly two input images:
+	1.	PERSON photo (the model) – preserve identity, body shape, pose, lighting, and background.
+	2.	GARMENT photo – apply only this clothing item onto the person.
 
-  TASK: Produce ONE photorealistic image of the PERSON wearing the GARMENT.
+TASK: Generate a single photorealistic image of the PERSON wearing the GARMENT.
 
-  STRICT REQUIREMENTS:
-  - Keep the person's face, hair, body proportions, hands, and background unchanged.
-  - Fit the garment naturally (correct scale, drape, folds, perspective, and alignment with body pose).
-  - Preserve/translate fabric texture, color accuracy, logos/patterns from the garment image.
-  - Maintain consistent lighting & shadows; blend edges cleanly without halos or artifacts.
-  - No extra accessories, no different clothing, no text overlays, no stylization—pure realism.
-  - If sleeves/neckline/length are unclear, infer plausibly while remaining subtle.
-  - Output ONLY the final edited image (no captions or alternate formats).
+STRICT REQUIREMENTS:
+	•	Keep the person’s face, hair, skin, body proportions, hands, and background fully unchanged.
+	•	Fit the garment naturally to the person: correct size, drape, folds, perspective, and alignment with pose.
+	•	Reproduce fabric texture, material, color accuracy, logos, and patterns from the garment image with exact fidelity.
+	•	Ensure consistent lighting, shadows, and shading with the original photo.
+	•	Blend garment edges seamlessly, with no halos, artifacts, or distortions.
+	•	Do not add or alter anything else (no extra accessories, no different clothes, no text, no stylization).
+	•	If garment details (sleeves, neckline, length) are unclear, infer a subtle, plausible completion.
+	•	Deliver only the final edited image—no captions, alternatives, or other outputs.
 
-  Produce the best possible single output image.`
+GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable from a real photo.
+
+⸻
+
+Do you want me to also rewrite it in a shorter “system-prompt style” version that you can drop straight into an API call, without explanations?`
 
     // If the user supplied an additional (optional) prompt, append it in a controlled way.
     const editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS (optional – follow only if they don't conflict):\n${userPrompt}` : baseSystemPrompt

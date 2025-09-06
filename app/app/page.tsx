@@ -55,11 +55,12 @@ function PhotoEditorContent() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const fileInputYouRef = useRef<HTMLInputElement>(null)
   const fileInputClothingRef = useRef<HTMLInputElement>(null)
-  // Clothing search state
+  // Clothing search
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string | null }>>([])
+  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string }>>([])
+  const [importingIndex, setImportingIndex] = useState<number | null>(null)
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,17 +79,49 @@ function PhotoEditorContent() {
     }
   }
 
-  const selectRemoteImage = async (imgUrl: string, title: string) => {
-    // Fetch image as blob then convert to File to reuse existing pipeline
+  const selectRemoteImage = async (imgUrl: string, title: string, index: number) => {
     try {
-      const r = await fetch(imgUrl)
+      setImportingIndex(index)
+      const r = await fetch(`/api/fetch-image?url=${encodeURIComponent(imgUrl)}`)
+      if (!r.ok) throw new Error('Proxy fetch failed')
       const b = await r.blob()
-      const file = new File([b], title.replace(/[^a-z0-9]+/gi,'_').slice(0,40) + '.jpg', { type: b.type || 'image/jpeg' })
+      const mime = b.type && b.type.startsWith('image/') ? b.type : 'image/jpeg'
+      const file = new File([b], (title || 'clothing').replace(/[^a-z0-9]+/gi,'_').slice(0,40)+'.jpg', { type: mime })
       await processSingleFile(file, 'clothing')
-      // Scroll to clothing card
-      document.getElementById('clothing-upload-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    } catch (e) {
-      setUploadError('Failed to load remote image')
+      document.getElementById('clothing-upload-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    } catch {
+      // Fallback: attempt direct image load -> canvas -> blob
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const img = document.createElement('img') as HTMLImageElement
+          img.crossOrigin = 'anonymous'
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas')
+              canvas.width = img.naturalWidth
+              canvas.height = img.naturalHeight
+              const ctx = canvas.getContext('2d')
+              if (!ctx) return reject(new Error('no ctx'))
+              ctx.drawImage(img, 0, 0)
+              resolve(canvas.toDataURL('image/jpeg', 0.92))
+            } catch (e) {
+              reject(e)
+            }
+          }
+            
+          img.onerror = () => reject(new Error('img load error'))
+          img.src = imgUrl
+        })
+        const res = await fetch(dataUrl)
+        const blob = await res.blob()
+        const file = new File([blob], (title || 'clothing').replace(/[^a-z0-9]+/gi,'_').slice(0,40)+'.jpg', { type: 'image/jpeg' })
+        await processSingleFile(file, 'clothing')
+        document.getElementById('clothing-upload-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      } catch {
+        setUploadError('Failed to import remote image. Try another result or upload manually.')
+      }
+    } finally {
+      setImportingIndex(null)
     }
   }
 
@@ -274,7 +307,7 @@ function PhotoEditorContent() {
                   </Card>
                 )}
                 <div className="space-y-4">
-                  <Card className="border-border hover:border-primary/50 transition-colors">
+                  <Card id="clothing-upload-card" className="border-border hover:border-primary/50 transition-colors">
                     <CardContent className="p-5">
                       <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('you')} onClick={() => fileInputYouRef.current?.click()}>
                         <h4 className="text-md font-semibold text-foreground mb-3">You</h4>
@@ -303,7 +336,7 @@ function PhotoEditorContent() {
                       </div>
                     </CardContent>
                   </Card>
-                  <Card id="clothing-upload-card" className="border-border hover:border-primary/50 transition-colors">
+                  <Card className="border-border hover:border-primary/50 transition-colors">
                     <CardContent className="p-5">
                       <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('clothing')} onClick={() => fileInputClothingRef.current?.click()}>
                         <h4 className="text-md font-semibold text-foreground mb-3">Clothing</h4>
@@ -333,37 +366,26 @@ function PhotoEditorContent() {
                     </CardContent>
                   </Card>
                 </div>
-                {/* Clothing search section */}
                 <Card className="border-border">
                   <CardContent className="p-5 space-y-4">
-                    <h4 className="text-md font-semibold">Find Clothing by Description</h4>
+                    <h4 className="text-md font-semibold">Find Clothing</h4>
                     <form onSubmit={handleSearch} className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="e.g. slim-fit black turtleneck sweater"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="flex-1 px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                      <Button type="submit" disabled={isSearching || !searchQuery.trim()} variant="secondary">{isSearching ? (<><Loader2 className="h-4 w-4 animate-spin mr-2"/>Searching</>) : 'Search'}</Button>
+                      <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="slim-fit black turtleneck sweater" className="flex-1 px-3 py-2 rounded-md border bg-background text-sm" />
+                      <Button type="submit" disabled={!searchQuery.trim() || isSearching} variant="secondary">{isSearching ? (<><Loader2 className="h-4 w-4 animate-spin mr-2"/>Searching</>) : 'Search'}</Button>
                     </form>
                     {searchError && <p className="text-xs text-destructive">{searchError}</p>}
                     {results.length > 0 && (
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        {results.map((r, i) => (
-                          <button key={i} type="button" onClick={() => selectRemoteImage(r.image, r.title)} className="group relative border rounded-lg overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                        {results.map((r,i)=>(
+                          <button key={i} type="button" onClick={()=>selectRemoteImage((r as any).highResImage || r.image, r.title, i)} disabled={importingIndex !== null} className="group relative border rounded-lg overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={r.image} alt={r.title} className="w-full h-28 object-cover transition-transform group-hover:scale-105" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs text-white p-2 text-center">
-                              Use
-                            </div>
+                            <img src={r.image} alt={r.title} className="w-full h-28 object-cover group-hover:scale-105 transition-transform" />
+                            <div className={`absolute inset-0 flex items-center justify-center text-white text-xs transition-opacity ${importingIndex===i ? 'bg-black/60 opacity-100' : 'bg-black/40 opacity-0 group-hover:opacity-100'}`}>{importingIndex===i ? 'Importing...' : 'Use'}</div>
                           </button>
                         ))}
                       </div>
                     )}
-                    {!isSearching && results.length === 0 && (
-                      <p className="text-xs text-muted-foreground">No results yet. Try describing the garment you want.</p>
-                    )}
+                    {!isSearching && results.length === 0 && (searchQuery.trim() ? <p className="text-xs text-muted-foreground">No matches. Refine with a color & category.</p> : <p className="text-xs text-muted-foreground">Describe a garment to search real product photos.</p>)}
                     {isSearching && <p className="text-xs text-muted-foreground">Searching...</p>}
                   </CardContent>
                 </Card>
