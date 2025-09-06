@@ -39,6 +39,8 @@ interface GuardrailMetrics {
 	afterDedup: number
 	clothingOnly: number
 	blockedRemoved: number
+	brandUnique: number
+	droppedBrandDuplicates: number
 }
 
 interface SerpShoppingResult {
@@ -49,6 +51,8 @@ interface SerpShoppingResult {
 	position?: number
 	price?: string
 	extracted_price?: number
+	rating?: number
+	reviews?: number
 	extensions?: string[]
 }
 
@@ -106,9 +110,14 @@ export async function GET(req: NextRequest) {
 		const clothingOnly = deduped.filter(r => isClothingTitle(r.title))
 		// Fallback: if guardrail removes everything (overly strict) relax to previous heuristic but still block obvious non-clothing
 		const baselineFiltered = deduped.filter(r => r.thumbnail && r.title && !BLOCKED_KEYWORDS.some(b => (r.title||'').toLowerCase().includes(b)))
-		const finalSet = (clothingOnly.length >= 4 ? clothingOnly : baselineFiltered).slice(0, 10)
+		const finalSet = (clothingOnly.length >= 4 ? clothingOnly : baselineFiltered).slice(0, 25) // allow a few more before brand/price guardrails
 
-		const metrics: GuardrailMetrics = {
+		// Brand/source blacklist (e.g., stock image providers we don't want to surface as apparel products)
+		const blacklistBrands = new Set(['shutterstock'])
+		const brandFilteredSet = finalSet.filter(r => !blacklistBrands.has((r.source || '').toLowerCase()))
+
+		// We'll fill extended metrics after final transformations
+		const baseMetrics: Omit<GuardrailMetrics, 'brandUnique' | 'droppedBrandDuplicates'> = {
 			originalCount: results.length,
 			afterDedup: deduped.length,
 			clothingOnly: clothingOnly.length,
@@ -121,6 +130,90 @@ export async function GET(req: NextRequest) {
 			// Google image thumbs often embed size directives like =w200-h200 or -w200-h200-; try bumping
 			return url.replace(/=w(\d+)-h(\d+)[^&]*/i, '=w800-h800').replace(/w\d+-h\d+/i, 'w800-h800')
 		}
+		// First map raw -> enriched item objects with price inference
+		const mapped = brandFilteredSet.map(r => {
+			const highResFromOriginal = (r as any).original || (r as any).original_image || null
+			const highResHeuristic = upgradeUrl(highResFromOriginal || r.thumbnail)
+			let price: any = (r as any).price ?? (r as any).extracted_price
+			// Extract rating / reviews if present (SerpApi often supplies rating & reviews fields)
+			let rating: number | undefined = (r as any).rating
+			let reviews: number | undefined = (r as any).reviews
+			// Attempt lightweight parse from extensions if missing
+			if ((rating == null || reviews == null) && Array.isArray(r.extensions)) {
+				for (const ex of r.extensions) {
+					// Match patterns like "4.5" or "4.5/5" possibly followed by reviews in another extension
+					const ratingMatch = /([0-5](?:\.\d+)?)(?:\s*\/\s*5)?/.exec(ex)
+					if (rating == null && ratingMatch) {
+						const val = parseFloat(ratingMatch[1])
+						if (!isNaN(val) && val <= 5) rating = val
+					}
+					// Match reviews like (1,234) or 1,234 reviews
+					const reviewsMatch = /(\d{1,3}(?:,\d{3})+|\d+)\s*(?:reviews|ratings|rev\b|r\b)?/i.exec(ex)
+					if (reviews == null && reviewsMatch) {
+						const num = parseInt(reviewsMatch[1].replace(/,/g,''),10)
+						if (!isNaN(num)) reviews = num
+					}
+					if (rating != null && reviews != null) break
+				}
+			}
+			if (!price && Array.isArray(r.extensions)) {
+				const priceLike = r.extensions.find(ex => /[$£€¥₹]|\bUSD\b|\bEUR\b|\bGBP\b|\bINR\b|\bCAD\b|\bAUD\b|\bNZD\b|Rs\.?/i.test(ex))
+				if (priceLike) price = priceLike
+			}
+			return {
+				title: r.title,
+				image: r.thumbnail,
+				highResImage: highResFromOriginal || highResHeuristic || r.thumbnail,
+				url: r.link,
+				brand: r.source,
+				position: r.position,
+				price,
+				rating,
+				reviews,
+				_score: (reviews || 0) * (rating || 0),
+				extensions: r.extensions
+			}
+		})
+
+		// Brand uniqueness + relevance ranking:
+		// 1. For each brand keep the highest scoring item (score = reviews * rating)
+		// 2. Sort remaining items by score desc, then fallback to (reviews desc, rating desc, position asc)
+		// 3. Take top 10
+		const brandBest = new Map<string, typeof mapped[number]>()
+		for (const item of mapped) {
+			const key = (item.brand || '').toLowerCase()
+			const existing = brandBest.get(key)
+			if (!existing) {
+				brandBest.set(key, item)
+				continue
+			}
+			// Replace if new item has higher score; tie-breaker: higher reviews, higher rating, earlier position
+			if (
+				(item._score > existing._score) ||
+				(item._score === existing._score && (item.reviews || 0) > (existing.reviews || 0)) ||
+				(item._score === existing._score && (item.reviews || 0) === (existing.reviews || 0) && (item.rating || 0) > (existing.rating || 0)) ||
+				(item._score === existing._score && (item.reviews || 0) === (existing.reviews || 0) && (item.rating || 0) === (existing.rating || 0) && (item.position || Infinity) < (existing.position || Infinity))
+			) {
+				brandBest.set(key, item)
+			}
+		}
+		let brandUniqueItems = Array.from(brandBest.values())
+		brandUniqueItems.sort((a,b) => {
+			if (b._score !== a._score) return b._score - a._score
+			const revDiff = (b.reviews||0) - (a.reviews||0)
+			if (revDiff) return revDiff
+			const ratingDiff = (b.rating||0) - (a.rating||0)
+			if (ratingDiff) return ratingDiff
+			return (a.position||0) - (b.position||0)
+		})
+		brandUniqueItems = brandUniqueItems.slice(0,10)
+
+		const metrics: GuardrailMetrics = {
+			...baseMetrics,
+			brandUnique: brandUniqueItems.length,
+			droppedBrandDuplicates: mapped.length - brandUniqueItems.length
+		}
+
 		return NextResponse.json({
 			query: q,
 			enrichedQuery: enriched,
@@ -129,21 +222,8 @@ export async function GET(req: NextRequest) {
 			guardrail: metrics,
 			rawShoppingCount: json.shopping_results ? json.shopping_results.length : 0,
 			rawImagesCount: Array.isArray(json.images_results) ? json.images_results.length : 0,
-			count: finalSet.length,
-			items: finalSet.map(r => {
-				const highResFromOriginal = (r as any).original || (r as any).original_image || null
-				const highResHeuristic = upgradeUrl(highResFromOriginal || r.thumbnail)
-				return {
-					title: r.title,
-					image: r.thumbnail, // thumbnail (display in grid)
-					highResImage: highResFromOriginal || highResHeuristic || r.thumbnail, // better candidate for import
-					url: r.link,
-					brand: r.source,
-					position: r.position,
-					price: r.price ?? r.extracted_price,
-					extensions: r.extensions
-				}
-			})
+			count: brandUniqueItems.length,
+			items: brandUniqueItems.map(({ _score, ...rest }) => rest) // strip internal _score
 		})
 	} catch (e: any) {
 		return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 })
