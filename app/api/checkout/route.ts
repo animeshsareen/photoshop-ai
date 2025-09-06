@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server"
+import { headers } from "next/headers"
 import Stripe from "stripe"
 
 // Helper to build an absolute site URL in all environments.
-function getBaseUrl() {
-  // Prefer an explicitly configured public site URL first (you can add NEXT_PUBLIC_SITE_URL in Vercel dashboard).
+async function getBaseUrl() {
+  // 1. Explicit public site URL (recommended to set in production)
   const explicit = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL
   if (explicit) return explicit.replace(/\/$/, "")
-  // Vercel provides VERCEL_URL without protocol (e.g. my-app.vercel.app)
+
+  // 2. Derive from request headers (host + forwarded proto) – works on Vercel & most hosts
+  const h = await headers()
+  const host = h.get("x-forwarded-host") || h.get("host") || ""
+  if (host) {
+    const proto = h.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https")
+    return `${proto}://${host}`.replace(/\/$/, "")
+  }
+
+  // 3. Vercel-provided env var (no protocol)
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  // Fallback to localhost for local dev only.
+
+  // 4. Local dev fallback
   return "http://localhost:3000"
 }
 
@@ -26,22 +37,40 @@ export async function POST(req: Request) {
 
     const stripe = new Stripe(secret, { apiVersion: "2024-06-20" })
 
-    const baseUrl = getBaseUrl()
+  const baseUrl = await getBaseUrl()
 
     // Warn (server-side only) if we unexpectedly ended up with localhost while in production.
     if (process.env.NODE_ENV === "production" && baseUrl.includes("localhost")) {
-      console.warn("[checkout] Base URL resolved to localhost in production. Set NEXT_PUBLIC_SITE_URL or NEXTAUTH_URL.")
+      console.warn("[checkout] WARNING: Base URL resolved to localhost in production. Set NEXT_PUBLIC_SITE_URL (preferred) or NEXTAUTH_URL.")
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        { price, quantity: 1 },
-      ],
-      success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/checkout/cancel`,
-      allow_promotion_codes: false,
-    })
+    let session
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+          { price, quantity: 1 },
+        ],
+        success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/checkout/cancel`,
+        allow_promotion_codes: false,
+      })
+    } catch (stripeErr: any) {
+      console.error("Stripe API error", {
+        message: stripeErr?.message,
+        type: stripeErr?.type,
+        code: stripeErr?.code,
+        raw: stripeErr,
+        // Don't log secrets, just whether they exist
+        env: {
+          hasSecret: !!secret,
+          hasPrice: !!price,
+          nodeEnv: process.env.NODE_ENV,
+          resolvedBaseUrl: baseUrl,
+        },
+      })
+      throw stripeErr
+    }
 
     return NextResponse.json({ id: session.id, url: session.url })
   } catch (error) {
