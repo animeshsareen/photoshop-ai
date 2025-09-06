@@ -10,6 +10,16 @@ export const metadata: Metadata = {
   title: 'AI Photo Editor',
   description: 'Edit your photos with AI using natural language',
   generator: 'v0.app',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+    ],
+    shortcut: ['/favicon.ico'],
+    apple: [
+      { url: '/apple-touch-icon.png' },
+    ],
+  },
 }
 
 export default function RootLayout({
