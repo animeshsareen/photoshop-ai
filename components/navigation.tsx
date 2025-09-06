@@ -25,10 +25,12 @@ export default function Navigation() {
             </Link>
             
             <div className="hidden md:flex items-center space-x-6">
-              <Link href="/app" className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              {/* Home should go to landing page */}
+              <Link href="/landing" className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                 <Home className="h-4 w-4" />
                 <span>Home</span>
               </Link>
+              {/* Editor points to main editor app */}
               <Link href="/app" className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                 <Image className="h-4 w-4" />
                 <span>Editor</span>
