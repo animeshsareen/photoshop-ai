@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Home, Image, Settings, LogOut } from "lucide-react"
+import { Image, LogOut } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -18,24 +18,11 @@ export default function Navigation() {
     <nav className="bg-background border-b border-border">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center space-x-4">
             <Link href="/app" className="flex items-center space-x-2">
               <Image className="h-6 w-6" />
               <span className="font-bold text-lg">AI Photo Editor</span>
             </Link>
-            
-            <div className="hidden md:flex items-center space-x-6">
-              {/* Home should go to landing page */}
-              <Link href="/landing" className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                <Home className="h-4 w-4" />
-                <span>Home</span>
-              </Link>
-              {/* Editor points to main editor app */}
-              <Link href="/app" className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                <Image className="h-4 w-4" />
-                <span>Editor</span>
-              </Link>
-            </div>
           </div>
 
           <div className="flex items-center space-x-2">

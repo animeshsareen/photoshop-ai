@@ -1,30 +1,11 @@
-"use client"
+import { auth } from "@/lib/auth"
+import { redirect } from "next/navigation"
+import LandingContent from "@/components/landing-content"
 
-import { useAuth } from "@/hooks/use-auth"
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
-import LandingPage from "./landing/page"
-
-export default function RootPage() {
-  const { isAuthenticated, isLoading } = useAuth(false) // Don't require auth on landing page
-  const router = useRouter()
-
-  useEffect(() => {
-    if (isAuthenticated && !isLoading) {
-      router.push("/app")
-    }
-  }, [isAuthenticated, isLoading, router])
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    )
+export default async function RootPage() {
+  const session = await auth()
+  if (session?.user) {
+    redirect("/app")
   }
-
-  return <LandingPage />
+  return <LandingContent />
 }
