@@ -29,20 +29,30 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData()
-    const prompt = formData.get("prompt") as string
+    const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
 
+    // Support new virtual try-on fields plus legacy multi-image fields
     const images: File[] = []
-    let index = 0
-    while (true) {
-      const image = formData.get(`image_${index}`) as File
-      if (!image) break
-      images.push(image)
-      index++
+
+    const youImage = formData.get('you_image') as File | null
+    const clothingImage = formData.get('clothing_image') as File | null
+    if (youImage) images.push(youImage)
+    if (clothingImage) images.push(clothingImage)
+
+    if (images.length === 0) {
+      // Fallback to legacy numbered fields if new fields absent
+      let index = 0
+      while (true) {
+        const image = formData.get(`image_${index}`) as File
+        if (!image) break
+        images.push(image)
+        index++
+      }
     }
 
-    if (images.length === 0 || !prompt) {
-      console.log("[v0] Missing images or prompt")
-      return NextResponse.json({ error: "At least one image and prompt are required" }, { status: 400 })
+    if (images.length === 0) {
+      console.log("[v0] Missing images")
+      return NextResponse.json({ error: "At least one image is required" }, { status: 400 })
     }
 
     const MAX_IMAGE_SIZE = 4 * 1024 * 1024 // 4MB per image
@@ -116,10 +126,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(
-      `[v0] Processing ${compressedImages.length} image(s) with total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB, prompt:`,
-      prompt,
-    )
+  console.log(`[v0] Processing ${compressedImages.length} image(s) with total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB. User prompt length: ${userPrompt.length}`)
 
     const imageParts = await Promise.all(
       compressedImages.map(async (image) => {
@@ -139,15 +146,31 @@ export async function POST(request: NextRequest) {
       model: "gemini-2.5-flash-image-preview", // Use the working model name
     })
 
-    const editPrompt = `I have uploaded ${compressedImages.length} image(s). Please analyze all of these images and create ONE new edited image based on the following instruction: ${prompt}. 
-    
-    Use all the uploaded images as reference/context, but generate a single cohesive result that incorporates the requested changes.`
+  const baseSystemPrompt = `You are a virtual fashion try-on assistant. There are exactly TWO input images:
+  1) A PERSON photo (the model) – preserve identity, body shape, pose, lighting and background.
+  2) A GARMENT photo – apply ONLY this clothing item onto the person realistically.
 
-    console.log("[v0] Sending request to Gemini API with multiple images")
+  TASK: Produce ONE photorealistic image of the PERSON wearing the GARMENT.
+
+  STRICT REQUIREMENTS:
+  - Keep the person's face, hair, body proportions, hands, and background unchanged.
+  - Fit the garment naturally (correct scale, drape, folds, perspective, and alignment with body pose).
+  - Preserve/translate fabric texture, color accuracy, logos/patterns from the garment image.
+  - Maintain consistent lighting & shadows; blend edges cleanly without halos or artifacts.
+  - No extra accessories, no different clothing, no text overlays, no stylization—pure realism.
+  - If sleeves/neckline/length are unclear, infer plausibly while remaining subtle.
+  - Output ONLY the final edited image (no captions or alternate formats).
+
+  Produce the best possible single output image.`
+
+    // If the user supplied an additional (optional) prompt, append it in a controlled way.
+    const editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS (optional – follow only if they don't conflict):\n${userPrompt}` : baseSystemPrompt
+
+    console.log("[v0] Sending virtual try-on request to Gemini API with multiple images")
 
     let response
     try {
-      response = await model.generateContent([editPrompt, ...imageParts])
+  response = await model.generateContent([editPrompt, ...imageParts])
       console.log("[v0] Gemini API call successful")
     } catch (apiError) {
       console.error("[v0] Gemini API call failed:", apiError)

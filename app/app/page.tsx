@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
+// Textarea removed for virtual try-on flow
 import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from "lucide-react"
 import Image from "next/image"
 import { CreditDisplay } from "@/components/credit-display"
@@ -37,432 +37,231 @@ interface EditedImage {
 
 function PhotoEditorContent() {
   const { user } = useAuth()
-  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([])
+  // Separate single-image slots for virtual try-on
+  const [youImage, setYouImage] = useState<SelectedImage | null>(null)
+  const [clothingImage, setClothingImage] = useState<SelectedImage | null>(null)
   const [editedImage, setEditedImage] = useState<string | null>(null)
-  const [editPrompt, setEditPrompt] = useState("")
+  // prompt removed for virtual try-on flow
   const [isProcessing, setIsProcessing] = useState(false)
   const [credits, setCredits] = useState(0)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputYouRef = useRef<HTMLInputElement>(null)
+  const fileInputClothingRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setCredits(getCredits())
   }, [])
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files) return
-
+  const processSingleFile = async (file: File, slot: 'you' | 'clothing') => {
     setUploadError(null)
     setIsCompressing(true)
-
     try {
-      const fileArray = Array.from(files)
-      
-      // First validate all files
-      const validation = validateMultipleImages(fileArray)
-      if (!validation.isValid) {
+      const validation = validateMultipleImages([file])
+      if (!validation.isValid || validation.validFiles.length === 0) {
         setUploadError(validation.error || 'Validation failed')
         return
       }
-
-      const processedImages: SelectedImage[] = []
-
-      for (const file of validation.validFiles) {
-        const result = await compressAndValidateImage(file)
-        
-        if (!result.isValid) {
-          setUploadError(`Failed to process ${file.name}: ${result.error}`)
-          return
-        }
-
+      const theFile = validation.validFiles[0]
+      const result = await compressAndValidateImage(theFile)
+      if (!result.isValid) {
+        setUploadError(`Failed to process ${theFile.name}: ${result.error}`)
+        return
+      }
+      await new Promise<void>((resolve) => {
         const reader = new FileReader()
         reader.onload = (e) => {
           const newImage: SelectedImage = {
             id: Math.random().toString(36).substr(2, 9),
             data: e.target?.result as string,
-            file: result.compressedFile || file,
+            file: result.compressedFile || theFile,
             originalSize: result.originalSize,
             compressedSize: result.compressedSize,
             isCompressed: result.isCompressed
           }
-          processedImages.push(newImage)
-          
-          // Update state when all images are processed
-          if (processedImages.length === validation.validFiles.length) {
-            setSelectedImages((prev) => [...prev, ...processedImages])
-            setEditedImage(null)
-          }
+          if (slot === 'you') setYouImage(newImage)
+          else setClothingImage(newImage)
+          setEditedImage(null)
+          resolve()
         }
-        reader.readAsDataURL(result.compressedFile || file)
-      }
-
+        reader.readAsDataURL(result.compressedFile || theFile)
+      })
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Failed to process images')
+      setUploadError(error instanceof Error ? error.message : 'Failed to process image')
     } finally {
       setIsCompressing(false)
     }
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleImageUpload = (slot: 'you' | 'clothing') => async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    await processSingleFile(files[0], slot)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault() }
+  const handleDrop = (slot: 'you' | 'clothing') => async (e: React.DragEvent) => {
     e.preventDefault()
+    const f = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'))
+    if (f) await processSingleFile(f, slot)
   }
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith("image/"))
-
-    if (files.length === 0) return
-
-    setUploadError(null)
-    setIsCompressing(true)
-
-    try {
-      // Validate all dropped files
-      const validation = validateMultipleImages(files)
-      if (!validation.isValid) {
-        setUploadError(validation.error || 'Validation failed')
-        return
-      }
-
-      const processedImages: SelectedImage[] = []
-
-      for (const file of validation.validFiles) {
-        const result = await compressAndValidateImage(file)
-        
-        if (!result.isValid) {
-          setUploadError(`Failed to process ${file.name}: ${result.error}`)
-          return
-        }
-
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const newImage: SelectedImage = {
-            id: Math.random().toString(36).substr(2, 9),
-            data: e.target?.result as string,
-            file: result.compressedFile || file,
-            originalSize: result.originalSize,
-            compressedSize: result.compressedSize,
-            isCompressed: result.compressedFile !== undefined
-          }
-          processedImages.push(newImage)
-          
-          // Update state when all images are processed
-          if (processedImages.length === validation.validFiles.length) {
-            setSelectedImages((prev) => [...prev, ...processedImages])
-            setEditedImage(null)
-          }
-        }
-        reader.readAsDataURL(result.compressedFile || file)
-      }
-
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Failed to process images')
-    } finally {
-      setIsCompressing(false)
-    }
-  }
-
-  const removeImage = (id: string) => {
-    setSelectedImages((prev) => prev.filter((img) => img.id !== id))
-    setEditedImage(null)
-  }
-
-  const clearAllImages = () => {
-    setSelectedImages([])
-    setEditedImage(null)
-    setUploadError(null)
-  }
+  const removeImage = (slot: 'you' | 'clothing') => { if (slot === 'you') setYouImage(null); else setClothingImage(null); setEditedImage(null) }
+  const clearAllImages = () => { setYouImage(null); setClothingImage(null); setEditedImage(null); setUploadError(null) }
 
   const handlePurchaseCredits = async () => {
     setIsProcessingPayment(true)
     try {
-      const response = await fetch("/api/create-payment-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 100 }), // $1.00 in cents
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        // In a real app, you'd handle Stripe payment confirmation here
-        addCredits(CREDITS_PER_DOLLAR)
-        setCredits(getCredits())
-        // Dispatch custom event to update credit display
-        window.dispatchEvent(new Event("creditsUpdated"))
-        alert(`Successfully purchased ${CREDITS_PER_DOLLAR} credits!`)
-      } else {
-        alert("Payment failed. Please try again.")
-      }
-    } catch (error) {
-      console.error("Payment error:", error)
-      alert("Payment failed. Please try again.")
-    } finally {
-      setIsProcessingPayment(false)
-    }
+      const res = await fetch("/api/checkout", { method: "POST" })
+      if (!res.ok) throw new Error("Failed to start checkout")
+      const data = await res.json()
+      if (data.url) { window.location.href = data.url as string; return }
+      throw new Error("No checkout URL returned")
+    } catch (e) {
+      console.error(e)
+      alert("Unable to start checkout. Please try again.")
+    } finally { setIsProcessingPayment(false) }
   }
 
   const handleEditImages = async () => {
-    if (selectedImages.length === 0 || !editPrompt.trim()) return
-
+    if (!youImage || !clothingImage) return
     const totalCost = CREDIT_COST_PER_EDIT
     const currentCredits = getCredits()
-    if (currentCredits < totalCost) {
-      alert(
-        `Insufficient credits! You need ${totalCost} credit to generate an edited image. Purchase more credits to continue.`,
-      )
-      return
-    }
-
+    if (currentCredits < totalCost) { alert(`Insufficient credits! You need ${totalCost} credit to generate.`); return }
     setIsProcessing(true)
     try {
       const formData = new FormData()
-
-      selectedImages.forEach((image, index) => {
-        formData.append(`image_${index}`, image.file)
-      })
-      formData.append("prompt", editPrompt)
-
-      const apiResponse = await fetch("/api/edit-image", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json()
-        throw new Error(errorData.error || `Failed to edit images: ${apiResponse.status}`)
-      }
-
-      const result = await apiResponse.json()
-      setEditedImage(result.editedImageUrl)
-
-      if (deductCredits(totalCost)) {
-        setCredits(getCredits())
-        window.dispatchEvent(new Event("creditsUpdated"))
-      }
-    } catch (error) {
-      console.error("Error editing images:", error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to edit images. Please try again.'
-      alert(errorMessage)
-    } finally {
-      setIsProcessing(false)
-    }
+      formData.append('you_image', youImage.file)
+      formData.append('clothing_image', clothingImage.file)
+      formData.append('prompt', "")
+      const apiResponse = await fetch("/api/edit-image", { method: "POST", body: formData })
+      if (!apiResponse.ok) { const errorData = await apiResponse.json(); throw new Error(errorData.error || `Failed: ${apiResponse.status}`) }
+      const result = await apiResponse.json(); setEditedImage(result.editedImageUrl)
+      if (deductCredits(totalCost)) { setCredits(getCredits()); window.dispatchEvent(new Event("creditsUpdated")) }
+    } catch (error) { console.error("Error editing images:", error); alert(error instanceof Error ? error.message : 'Failed to edit images.') }
+    finally { setIsProcessing(false) }
   }
 
-  const downloadEditedImage = () => {
-    if (!editedImage) return
-    const link = document.createElement("a")
-    link.href = editedImage
-    link.download = `ai-edited-image.png`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  const getTotalSize = () => {
-    return selectedImages.reduce((total, img) => total + (img.compressedSize || img.originalSize), 0)
-  }
+  const downloadEditedImage = () => { if (!editedImage) return; const link = document.createElement('a'); link.href = editedImage; link.download = 'ai-edited-image.png'; document.body.appendChild(link); link.click(); document.body.removeChild(link) }
+  const getTotalSize = () => { const sizes = [youImage, clothingImage].filter(Boolean).map(img => (img as SelectedImage).compressedSize || (img as SelectedImage).originalSize); return sizes.reduce((a,b)=>a+b,0) }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header with User Profile */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="text-center flex-1">
-            <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">AI Photoshop</h1>
-            <p className="text-muted-foreground text-lg text-pretty">
-              Welcome back, {user?.name}! Upload multiple photos and describe your edit - get one AI-generated result
-            </p>
-          </div>
-          <UserProfile />
-        </div>
-
-        <div className="space-y-8">
-          <CreditDisplay onPurchaseCredits={handlePurchaseCredits} />
-
-          {/* Upload Area */}
-          <Card className="border-2 border-dashed border-border hover:border-primary/50 transition-colors">
-            <CardContent className="p-8">
-              <div
-                className="text-center cursor-pointer"
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">Upload your photos</h3>
-                <p className="text-muted-foreground mb-4">
-                  Drag and drop multiple images - AI will create one edited result
-                </p>
-                <div className="text-xs text-muted-foreground mb-4 space-y-1">
-                  <p>Max size per image: {formatFileSize(MAX_IMAGE_SIZE)}</p>
-                  <p>Max total size: {formatFileSize(MAX_TOTAL_SIZE)}</p>
-                  <p>Large images will be automatically compressed</p>
-                </div>
-                <Button variant="outline" className="mx-auto bg-transparent" disabled={isCompressing}>
-                  {isCompressing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    'Choose Files'
-                  )}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Error Display */}
-          {uploadError && (
-            <Card className="border-destructive/20 bg-destructive/5">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">{uploadError}</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {selectedImages.length > 0 && (
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Input Images ({selectedImages.length})</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Total size: {formatFileSize(getTotalSize())}
-                    </p>
-                  </div>
-                  <Button onClick={clearAllImages} variant="outline" size="sm">
-                    Clear All
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {selectedImages.map((image) => (
-                    <div key={image.id} className="relative group">
-                      <div className="relative aspect-square rounded-lg overflow-hidden bg-muted">
-                        <Image
-                          src={image.data || "/placeholder.svg"}
-                          alt="Selected image"
-                          fill
-                          className="object-cover"
-                        />
-                        <button
-                          onClick={() => removeImage(image.id)}
-                          className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                        {image.isCompressed && (
-                          <div className="absolute bottom-2 left-2 bg-primary/80 text-primary-foreground rounded-full px-2 py-1 text-xs">
-                            Compressed
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          {image.isCompressed ? (
-                            <>
-                              <CheckCircle className="h-3 w-3 text-green-500" />
-                              <span>{formatFileSize(image.compressedSize || 0)}</span>
-                            </>
-                          ) : (
-                            <span>{formatFileSize(image.originalSize)}</span>
-                          )}
-                        </div>
-                        {image.isCompressed && (
-                          <div className="text-xs text-muted-foreground">
-                            from {formatFileSize(image.originalSize)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Edit Controls */}
-          {selectedImages.length > 0 && (
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">Describe your edit</label>
-                  <Textarea
-                    placeholder="e.g., Combine these images into a collage, merge the subjects into one scene, create a panorama..."
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    className="min-h-[100px] resize-none"
-                  />
-                </div>
-                <Button
-                  onClick={handleEditImages}
-                  disabled={!editPrompt.trim() || isProcessing || credits < CREDIT_COST_PER_EDIT}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating edited image...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="mr-2 h-4 w-4" />
-                      Generate Edited Image ({CREDIT_COST_PER_EDIT} credit)
-                    </>
-                  )}
-                </Button>
-                {credits < CREDIT_COST_PER_EDIT && (
-                  <p className="text-sm text-destructive text-center">
-                    Insufficient credits. You need {CREDIT_COST_PER_EDIT} credit to generate an edited image.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {selectedImages.length > 0 && editedImage && (
-            <div className="space-y-6">
-              <div className="flex justify-center">
-                <Button onClick={downloadEditedImage} variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Edited Image
-                </Button>
-              </div>
-
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="text-lg font-semibold text-foreground mb-4 text-center">AI Generated Result</h3>
-                  <div className="relative aspect-square max-w-2xl mx-auto rounded-lg overflow-hidden bg-muted">
-                    <Image
-                      src={editedImage || "/placeholder.svg"}
-                      alt="AI edited image"
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+      <div className="min-h-screen bg-background p-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div className="text-center flex-1">
+              <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">AI Photoshop</h1>
+              <p className="text-muted-foreground text-lg text-pretty">
+                Welcome back, {user?.name}! Upload your photo and a clothing item to try it on.
+              </p>
             </div>
-          )}
+            <UserProfile />
+          </div>
+          <div className="space-y-8">
+            <CreditDisplay onPurchaseCredits={handlePurchaseCredits} />
+            <div className="grid lg:grid-cols-2 gap-8 items-start">
+              <div className="space-y-6">
+                {uploadError && (
+                  <Card className="border-destructive/20 bg-destructive/5">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-sm font-medium">{uploadError}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                <div className="space-y-4">
+                  <Card className="border-border hover:border-primary/50 transition-colors">
+                    <CardContent className="p-5">
+                      <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('you')} onClick={() => fileInputYouRef.current?.click()}>
+                        <h4 className="text-md font-semibold text-foreground mb-3">You</h4>
+                        {!youImage ? (
+                          <>
+                            <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                            <p className="text-sm text-muted-foreground mb-2">Upload a photo of yourself</p>
+                            <div className="text-xs text-muted-foreground space-y-1"><p>Max size: {formatFileSize(MAX_IMAGE_SIZE)}</p></div>
+                            <div className="mt-3">
+                              <Button variant="outline" disabled={isCompressing}>{isCompressing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>) : 'Choose File'}</Button>
+                              <input ref={fileInputYouRef} type="file" accept="image/*" onChange={handleImageUpload('you')} className="hidden" />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="relative">
+                            <div className="relative aspect-square rounded-lg overflow-hidden bg-muted">
+                              <Image src={youImage.data} alt="You" fill className="object-cover" />
+                              <button onClick={(e) => { e.stopPropagation(); removeImage('you') }} className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1"><X className="h-3 w-3" /></button>
+                              {youImage.isCompressed && (<div className="absolute bottom-2 left-2 bg-primary/80 text-primary-foreground rounded-full px-2 py-1 text-xs">Compressed</div>)}
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1 justify-center">
+                              {youImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-green-500" /><span>{formatFileSize(youImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(youImage.originalSize)}</span></>) : (<span>{formatFileSize(youImage.originalSize)}</span>)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border hover:border-primary/50 transition-colors">
+                    <CardContent className="p-5">
+                      <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('clothing')} onClick={() => fileInputClothingRef.current?.click()}>
+                        <h4 className="text-md font-semibold text-foreground mb-3">Clothing</h4>
+                        {!clothingImage ? (
+                          <>
+                            <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                            <p className="text-sm text-muted-foreground mb-2">Upload a clothing image</p>
+                            <div className="text-xs text-muted-foreground space-y-1"><p>Max size: {formatFileSize(MAX_IMAGE_SIZE)}</p></div>
+                            <div className="mt-3">
+                              <Button variant="outline" disabled={isCompressing}>{isCompressing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>) : 'Choose File'}</Button>
+                              <input ref={fileInputClothingRef} type="file" accept="image/*" onChange={handleImageUpload('clothing')} className="hidden" />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="relative">
+                            <div className="relative aspect-square rounded-lg overflow-hidden bg-muted">
+                              <Image src={clothingImage.data} alt="Clothing" fill className="object-cover" />
+                              <button onClick={(e) => { e.stopPropagation(); removeImage('clothing') }} className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1"><X className="h-3 w-3" /></button>
+                              {clothingImage.isCompressed && (<div className="absolute bottom-2 left-2 bg-primary/80 text-primary-foreground rounded-full px-2 py-1 text-xs">Compressed</div>)}
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1 justify-center">
+                              {clothingImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-green-500" /><span>{formatFileSize(clothingImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(clothingImage.originalSize)}</span></>) : (<span>{formatFileSize(clothingImage.originalSize)}</span>)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                {(youImage && clothingImage) && (
+                  <Card>
+                    <CardContent className="p-6 space-y-4">
+                      <Button onClick={handleEditImages} disabled={isProcessing || credits < CREDIT_COST_PER_EDIT} className="w-full" size="lg">
+                        {isProcessing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating edited image...</>) : (<><Wand2 className="mr-2 h-4 w-4" />Try On Outfit ({CREDIT_COST_PER_EDIT} credit)</>)}
+                      </Button>
+                      {credits < CREDIT_COST_PER_EDIT && (<p className="text-sm text-destructive text-center">Insufficient credits. You need {CREDIT_COST_PER_EDIT} credit.</p>)}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+              <div className="space-y-6 sticky top-8 self-start">
+                <Card className="min-h-[400px] flex flex-col">
+                  <CardContent className="p-6 flex-1 flex flex-col">
+                    <h3 className="text-lg font-semibold text-foreground mb-4 text-center">AI Generated Result</h3>
+                    <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                      {editedImage ? (<Image src={editedImage} alt="AI edited image" fill className="object-cover" />) : (<div className="text-sm text-muted-foreground text-center px-4">{youImage && clothingImage ? 'Click "Try On Outfit" to generate the result.' : 'Upload both images to see the virtual try-on result here.'}</div>)}
+                    </div>
+                    {editedImage && (
+                      <div className="mt-4 flex justify-center">
+                        <Button onClick={downloadEditedImage} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
   )
 }
 

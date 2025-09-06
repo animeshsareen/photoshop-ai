@@ -10,6 +10,7 @@ export const config = {
     "/app/:path*",
     "/api/edit-image/:path*",
     "/api/create-payment-intent/:path*",
+  "/api/checkout/:path*",
     // Add other protected routes here
   ],
 }
