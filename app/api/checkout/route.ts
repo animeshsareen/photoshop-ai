@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { headers } from "next/headers"
 import Stripe from "stripe"
 
+// Ensure we use the Node.js runtime (Stripe SDK requires Node APIs, not edge runtime)
+export const runtime = "nodejs"
+
 // Helper to build an absolute site URL in all environments.
 async function getBaseUrl() {
   // 1. Explicit public site URL (recommended to set in production)

@@ -114,13 +114,18 @@ function PhotoEditorContent() {
     setIsProcessingPayment(true)
     try {
       const res = await fetch("/api/checkout", { method: "POST" })
-      if (!res.ok) throw new Error("Failed to start checkout")
-      const data = await res.json()
-      if (data.url) { window.location.href = data.url as string; return }
-      throw new Error("No checkout URL returned")
+      let data: any = null
+      try { data = await res.json() } catch { /* ignore parse error */ }
+      if (!res.ok) {
+        console.error("Checkout start failed", { status: res.status, data })
+        const msg = data?.error || data?.code || `HTTP ${res.status}`
+        throw new Error(`Failed to start checkout: ${msg}`)
+      }
+      if (data?.url) { window.location.href = data.url as string; return }
+      throw new Error(`No checkout URL returned${data?.id ? ` (session id: ${data.id})` : ""}`)
     } catch (e) {
-      console.error(e)
-      alert("Unable to start checkout. Please try again.")
+  console.error(e)
+  alert(e instanceof Error ? e.message : "Unable to start checkout. Please try again.")
     } finally { setIsProcessingPayment(false) }
   }
 
