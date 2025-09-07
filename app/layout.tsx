@@ -7,7 +7,7 @@ import Navigation from '@/components/navigation'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'TryMyClothes / FreeEdit',
+  title: 'PhotoshopAI',
   description: 'AI photo editing & virtual try-on',
   generator: 'v0.app',
   icons: {
