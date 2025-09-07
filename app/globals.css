@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0); /* Pure white background */
+  --background: oklch(99.668% 0.00526 95.189); /* Pure white background */
   --foreground: oklch(0.25 0 0); /* Dark gray for text (#374151) */
   /* Baby blue theme (was light green) */
   --card: oklch(0.98 0.01 235); /* Very light baby blue (#f0f9ff) */
@@ -122,5 +122,8 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  html {
+    scroll-behavior: smooth;
   }
 }

@@ -13,8 +13,8 @@ export default function LandingContent() {
         {/* Hero */}
         <section className="text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
-            Transform Your Photos with
-            <span className="text-primary"> AI Magic</span>
+            Try on clothes
+            <span className="text-primary"> with AI</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
             Upload clothing and see yourself wearing it. Incredible fidelity.
@@ -26,14 +26,14 @@ export default function LandingContent() {
                 Get Started Free
               </Link>
             </Button>
-            <Button variant="outline" size="lg">
-              Learn More
+            <Button asChild variant="outline" size="lg">
+              <a href="#how-it-works">Learn More</a>
             </Button>
           </div>
         </section>
 {/* How It Works */}
-  <section className="text-center">
-          <h2 className="text-3xl font-bold text-foreground mb-8">How It Works</h2>
+  <section id="how-it-works" className="text-center" aria-labelledby="how-it-works-heading">
+          <h2 id="how-it-works-heading" className="text-3xl font-bold text-foreground mb-8">How It Works</h2>
           <div className="grid md:grid-cols-4 gap-6">
             {["Sign In","Upload Photos","Describe Outfit","Get Result"].map((label, i) => (
               <div key={label} className="text-center">
