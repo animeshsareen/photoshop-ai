@@ -121,7 +121,7 @@ export default function LandingContent() {
                   {i + 1}
                 </div>
                 <h3 className="font-semibold mb-1">{label}</h3>
-                <p className="text-sm text-muted-foreground max-w-[14ch] mx-auto">
+                <p className="text-sm text-muted-foreground max-w-[18ch] mx-auto">
                   {i===0 && "Secure OAuth sign‑in"}
                   {i===1 && "Drag & drop or select"}
                   {i===2 && "Inline garment search"}
