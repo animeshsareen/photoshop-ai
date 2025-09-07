@@ -42,7 +42,7 @@ export default function LandingContent() {
                 </div>
                 <h3 className="font-semibold mb-2">{label}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {i===0 && "Quick Google OAuth authentication"}
+                  {i===0 && "Secure Auth0 authentication"}
                   {i===1 && "Drag & drop images, or search."}
                   {i===2 && "Search or enter what you'd like to try on"}
                   {i===3 && "Download your virtual try-on image."}

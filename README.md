@@ -4,7 +4,7 @@ An AI-powered photo editing application that allows users to edit photos using n
 
 ## Features
 
-- **Google OAuth Authentication**: Secure sign-in with Google accounts
+- **Auth0 Authentication**: Secure sign-in with multiple identity providers via Auth0
 - **AI Photo Editing**: Edit photos using natural language prompts
 - **Multiple Image Support**: Upload and process multiple images at once
 - **Credit System**: Pay-per-use credit system for AI operations (new users automatically receive 2 free credits)
@@ -16,7 +16,7 @@ An AI-powered photo editing application that allows users to edit photos using n
 
 - Node.js 18+ 
 - npm or pnpm
-- Google OAuth credentials
+- Auth0 application credentials
 
 ### Installation
 
@@ -33,16 +33,18 @@ npm install
 
 3. Set up environment variables:
    - Copy `env.example` to `.env.local`
-   - Fill in your Google OAuth credentials
+   - Fill in your Auth0 application credentials
 
-### Google OAuth Setup
+### Auth0 Setup
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Google+ API
-4. Go to "Credentials" and create an "OAuth 2.0 Client ID"
-5. Set the authorized redirect URI to: `http://localhost:3000/api/auth/callback/google`
-6. Copy the Client ID and Client Secret to your `.env.local` file
+1. Go to the [Auth0 Dashboard](https://manage.auth0.com/)
+2. Create a new Regular Web Application
+3. In Settings, add the following:
+   - Allowed Callback URLs: `http://localhost:3000/api/auth/callback/auth0`
+   - Allowed Logout URLs: `http://localhost:3000/`
+   - Allowed Web Origins: `http://localhost:3000`
+4. Copy the Domain (use as AUTH0_ISSUER with `https://` prefix), Client ID, and Client Secret into your `.env.local`
+5. (Optional) If using a custom API, set an Audience and add it as `AUTH0_AUDIENCE`
 
 ### Environment Variables
 
@@ -53,9 +55,11 @@ Create a `.env.local` file in the root directory:
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key-here-change-in-production
 
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Auth0 OAuth
+AUTH0_CLIENT_ID=your-auth0-client-id
+AUTH0_CLIENT_SECRET=your-auth0-client-secret
+AUTH0_ISSUER=https://your-tenant.us.auth0.com
+# AUTH0_AUDIENCE=https://your-api-identifier
 ```
 
 ### Running the Application
@@ -71,7 +75,7 @@ npm run dev
 
 ## Usage
 
-1. **Sign In**: Use your Google account to authenticate
+1. **Sign In**: Use Auth0 to authenticate
 2. **Upload Images**: Drag and drop or select multiple images
 3. **Describe Edit**: Write a natural language description of what you want
 4. **Generate**: Click generate to create your AI-edited image
@@ -87,7 +91,7 @@ npm run dev
 
 - **Next.js 15** - React framework
 - **NextAuth.js** - Authentication
-- **Google OAuth** - Google sign-in
+- **Auth0** - Authentication platform
 - **Tailwind CSS** - Styling
 - **Radix UI** - UI components
 - **Google Gemini AI** - Image processing

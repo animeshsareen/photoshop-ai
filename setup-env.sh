@@ -22,20 +22,22 @@ cat > .env.local << EOF
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=$SECRET
 
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Auth0 OAuth
+AUTH0_CLIENT_ID=your-auth0-client-id
+AUTH0_CLIENT_SECRET=your-auth0-client-secret
+AUTH0_ISSUER=https://your-tenant.us.auth0.com
+# AUTH0_AUDIENCE=https://your-api-identifier
 EOF
 
 echo "✅ Created .env.local file with generated secret"
 echo ""
 echo "Next steps:"
-echo "1. Go to https://console.cloud.google.com/"
-echo "2. Create a new project or select existing one"
-echo "3. Enable Google+ API"
-echo "4. Go to Credentials → Create OAuth 2.0 Client ID"
-echo "5. Set authorized redirect URI to: http://localhost:3000/api/auth/callback/google"
-echo "6. Copy Client ID and Client Secret to .env.local"
+echo "1. Go to https://manage.auth0.com/ and create a Regular Web Application"
+echo "2. Set Allowed Callback URLs: http://localhost:3000/api/auth/callback/auth0"
+echo "3. Set Allowed Logout URLs: http://localhost:3000/"
+echo "4. Set Allowed Web Origins: http://localhost:3000"
+echo "5. Copy Domain (AUTH0_ISSUER), Client ID, Client Secret into .env.local"
+echo "6. (Optional) Add Audience if using custom API"
 echo "7. Run 'npm run dev' to start the application"
 echo ""
 echo "⚠️  IMPORTANT: Never commit .env.local to version control!"

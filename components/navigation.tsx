@@ -21,7 +21,7 @@ export default function Navigation() {
           <div className="flex items-center space-x-4">
             <Link href="/app" className="flex items-center space-x-2">
               <Image className="h-6 w-6" />
-              <span className="font-bold text-lg">AI Photo Editor</span>
+              <span className="font-bold text-lg">PhotoshopAI</span>
             </Link>
           </div>
 

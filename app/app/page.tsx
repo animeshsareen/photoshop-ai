@@ -306,7 +306,19 @@ function PhotoEditorContent() {
                     </CardContent>
                   </Card>
                 )}
-                <div className="space-y-4">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <Card className="border-border/70 bg-background/50 backdrop-blur-sm lg:w-60 shrink-0">
+                    <CardContent className="p-4">
+                      <h4 className="text-md font-semibold mb-2">Upload tips</h4>
+                      <ul className="list-disc pl-4 space-y-1 text-xs text-muted-foreground">
+                        <li>Find a frontal photo of you</li>
+                        <li>Good lighting, neutral background</li>
+                        <li>One person only (no group shots)</li>
+                        <li>Lay-flat image of the garment</li>
+                      </ul>
+                    </CardContent>
+                  </Card>
+                  <div className="flex-1 space-y-4">
                   <Card id="clothing-upload-card" className="border-border hover:border-primary/50 transition-colors">
                     <CardContent className="p-5">
                       <div className="text-center cursor-pointer" onDragOver={handleDragOver} onDrop={handleDrop('you')} onClick={() => fileInputYouRef.current?.click()}>
@@ -365,6 +377,7 @@ function PhotoEditorContent() {
                       </div>
                     </CardContent>
                   </Card>
+                  </div>
                 </div>
                 <Card className="border-border">
                   <CardContent className="p-5 space-y-4">
