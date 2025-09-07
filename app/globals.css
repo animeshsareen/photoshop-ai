@@ -126,4 +126,9 @@
   html {
     scroll-behavior: smooth;
   }
+  h2 {
+    font-family: var(--font-inter), var(--font-geist-sans), ui-sans-serif, system-ui;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
 }

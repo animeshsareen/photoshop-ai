@@ -19,7 +19,8 @@ export default function Navigation() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center space-x-3">
-            <Link href="/app" className="flex items-center space-x-2">
+            {/* Brand should always take user to the public landing page */}
+            <Link href="/landing" className="flex items-center space-x-2" aria-label="Go to landing page">
               <Image className="h-6 w-6" />
               <span className="font-bold text-lg">PhotoshopAI</span>
             </Link>
