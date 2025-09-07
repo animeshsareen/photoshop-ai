@@ -7,17 +7,17 @@
   --background: oklch(99.668% 0.00526 95.189); /* Pure white background */
   --foreground: oklch(0.25 0 0); /* Dark gray for text (#374151) */
   /* Baby blue theme (was light green) */
-  --card: oklch(0.98 0.01 235); /* Very light baby blue (#f0f9ff) */
+  --card: oklch(92.667% 0.04408 230.297)light baby blue (#f0f9ff) */
   --card-foreground: oklch(0.25 0 0); /* Dark gray text */
   --popover: oklch(1 0 0); /* White popover background */
   --popover-foreground: oklch(0.25 0 0); /* Dark gray text */
-  --primary: oklch(0.63 0.15 235); /* Baby blue primary (#3b82f6 approx) */
+  --primary: oklch(59.426% 0.13052 237.384); /* Baby blue primary (#3b82f6 approx) */
   --primary-foreground: oklch(1 0 0); /* White text on primary */
   --secondary: oklch(0.98 0.01 235); /* Light baby blue secondary */
   --secondary-foreground: oklch(0.25 0 0); /* Dark gray text */
   --muted: oklch(0.98 0.01 235); /* Light baby blue muted background */
   --muted-foreground: oklch(0.25 0 0); /* Dark gray muted text */
-  --accent: oklch(0.82 0.06 235); /* Soft baby blue accent (#bfdbfe approx) */
+  --accent: oklch(90.394% 0.05489 235.049); /* Soft baby blue accent (#bfdbfe approx) */
   --accent-foreground: oklch(1 0 0); /* White text on accent */
   --destructive: oklch(0.55 0.2 25); /* Red for destructive actions */
   --destructive-foreground: oklch(1 0 0); /* White text on destructive */

@@ -7,8 +7,8 @@ import Navigation from '@/components/navigation'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'PhotoshopAI',
-  description: 'Edit your photos with AI using natural language',
+  title: 'TryMyClothes / FreeEdit',
+  description: 'AI photo editing & virtual try-on',
   generator: 'v0.app',
   icons: {
     icon: [

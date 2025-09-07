@@ -30,6 +30,13 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
     const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
+    // Optional sub-section selection data
+    const maskDataUrl = formData.get('mask') as string | null
+    const shapesJson = formData.get('shapes') as string | null
+    let shapesMeta: any = null
+    if (shapesJson) {
+      try { shapesMeta = JSON.parse(shapesJson) } catch { shapesMeta = null }
+    }
 
     // Support new virtual try-on fields plus legacy multi-image fields
     const images: File[] = []
@@ -126,7 +133,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-  console.log(`[v0] Processing ${compressedImages.length} image(s) with total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB. User prompt length: ${userPrompt.length}`)
+  console.log(`[v0] Processing ${compressedImages.length} image(s) with total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB. User prompt length: ${userPrompt.length}. Mask? ${!!maskDataUrl}`)
 
     const imageParts = await Promise.all(
       compressedImages.map(async (image) => {
@@ -169,7 +176,10 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 Do you want me to also rewrite it in a shorter “system-prompt style” version that you can drop straight into an API call, without explanations?`
 
     // If the user supplied an additional (optional) prompt, append it in a controlled way.
-    const editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS (optional – follow only if they don't conflict):\n${userPrompt}` : baseSystemPrompt
+    let editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS (optional – follow only if they don't conflict):\n${userPrompt}` : baseSystemPrompt
+    if (maskDataUrl) {
+      editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
+    }
 
     console.log("[v0] Sending virtual try-on request to Gemini API with multiple images")
 
@@ -288,9 +298,28 @@ Do you want me to also rewrite it in a shorter “system-prompt style” version
 
     console.log("[v0] Successfully generated single edited image from multiple inputs")
 
+    // If mask provided, attempt naive merge (currently we just return the raw generated image; real blending could be implemented with sharp)
+    // Persist mask + metadata temporarily (for future GET retrieval)
+    if (maskDataUrl) {
+      try {
+        const tempDir = '/tmp/subsections';
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
+        const ts = Date.now()
+        const maskPath = path.join(tempDir, `mask-${ts}.png`)
+        const metaPath = path.join(tempDir, `mask-${ts}.json`)
+        const maskBase64 = maskDataUrl.split(',')[1]
+        if (maskBase64) fs.writeFileSync(maskPath, Buffer.from(maskBase64, 'base64'))
+        fs.writeFileSync(metaPath, JSON.stringify({ shapes: shapesMeta, createdAt: ts }))
+      } catch (e) {
+        console.warn('[v0] Failed to persist mask metadata', e)
+      }
+    }
+
     return NextResponse.json({
       editedImageUrl: `data:image/png;base64,${generatedImageData}`,
       message: `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini 2.0 Flash`,
+      usedMask: !!maskDataUrl,
+      shapes: shapesMeta || undefined,
     })
   } catch (error) {
     console.error("[v0] Error processing image:", error)

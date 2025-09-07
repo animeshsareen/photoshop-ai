@@ -326,7 +326,7 @@ function PhotoEditorContent() {
                         {!youImage ? (
                           <>
                             <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                            <p className="text-sm text-muted-foreground mb-2">Upload a photo of yourself</p>
+                            <p className="text-sm text-muted-foreground mb-2">Upload your photo</p>
                             <div className="text-xs text-muted-foreground space-y-1"><p>Max size: {formatFileSize(MAX_IMAGE_SIZE)}</p></div>
                             <div className="mt-3">
                               <Button variant="outline" disabled={isCompressing}>{isCompressing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>) : 'Choose File'}</Button>
@@ -355,7 +355,7 @@ function PhotoEditorContent() {
                         {!clothingImage ? (
                           <>
                             <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                            <p className="text-sm text-muted-foreground mb-2">Upload a clothing image</p>
+                            <p className="text-sm text-muted-foreground mb-2">Upload clothing image</p>
                             <div className="text-xs text-muted-foreground space-y-1"><p>Max size: {formatFileSize(MAX_IMAGE_SIZE)}</p></div>
                             <div className="mt-3">
                               <Button variant="outline" disabled={isCompressing}>{isCompressing ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>) : 'Choose File'}</Button>

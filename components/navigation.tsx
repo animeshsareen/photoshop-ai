@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Image, LogOut, LogIn } from "lucide-react"
+import { Image, LogOut, LogIn, Shirt, Paintbrush } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -18,11 +18,24 @@ export default function Navigation() {
     <nav className="bg-background border-b border-border">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <Link href="/app" className="flex items-center space-x-2">
               <Image className="h-6 w-6" />
               <span className="font-bold text-lg">PhotoshopAI</span>
             </Link>
+            {/* Feature buttons adjacent to brand */}
+            <Button asChild variant="ghost" size="sm" className="px-2" aria-label="Try My Clothes">
+              <Link href="/app" prefetch>
+                <Shirt className="h-4 w-4 mr-1" />
+                TryMyClothes
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="px-2" aria-label="Free Edit">
+              <Link href="/free-edit" prefetch>
+                <Paintbrush className="h-4 w-4 mr-1" />
+                FreeEdit
+              </Link>
+            </Button>
           </div>
 
           <div className="flex items-center space-x-2">
