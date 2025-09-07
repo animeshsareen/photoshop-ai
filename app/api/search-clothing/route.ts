@@ -1,26 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// --- Search Enhancement Layer (normalization, fuzzy filtering, diversity) ---
+// The original implementation used simple includes() checks and basic brand uniqueness.
+// We extend it with:
+// 1. Token normalization & canonicalization (hyphen/space, plural/singular naive stemming)
+// 2. Expanded apparel domain vocabulary & color/category synonym mapping
+// 3. Precompiled regex-based clothing detection with word boundaries
+// 4. Fuzzy title dedupe via normalized similarity (Levenshtein ratio)
+// 5. Improved relevance scoring: (rating^2 * log(1+reviews))
+// 6. Post-ranking diversity (round-robin across colors & categories)
+// NOTE: Changes keep existing response shape & tests intact while improving internal filtering.
+
 // Ensure Node.js runtime so optional future sharp usage works
 export const runtime = 'nodejs'
 
 // Lightweight regex-ish parsing (MVP) – replace with LLM if needed
+// Canonical color synonyms
+const COLOR_SYNONYMS: Record<string,string> = {
+	grey: 'gray', charcoal: 'gray', silver: 'gray', ash: 'gray',
+	navy: 'blue', indigo: 'blue', cobalt: 'blue',
+	cream: 'beige', ivory: 'beige', oatmeal: 'beige', ecru: 'beige', sand: 'beige', tan: 'beige', khaki: 'beige',
+	maroon: 'red', burgundy: 'red', wine: 'red',
+	lime: 'green', olive: 'green', forest: 'green',
+	violet: 'purple', lilac: 'purple', lavender: 'purple',
+	fuchsia: 'pink', magenta: 'pink'
+}
+
+const BASE_COLORS = ['black','white','red','blue','green','yellow','purple','pink','gray','beige','brown','orange']
+const COLOR_SET = new Set(BASE_COLORS)
+
+// Category synonyms (map variants to canonical form)
+const CATEGORY_SYNONYMS: Record<string,string> = {
+	't-shirt': 'tshirt', tee: 'tshirt', 'graphic tee': 'tshirt',
+	trousers: 'pants', slacks: 'pants', chinos: 'pants', denim: 'jeans',
+	jumper: 'sweater', pullover: 'sweater', crewneck: 'sweater',
+	sweatshirt: 'hoodie', 'sweat shirt': 'hoodie',
+	camisole: 'top', cami: 'top', blouse: 'top', tank: 'top', 'tank top': 'top',
+	cardigan: 'cardigan'
+}
+
+const BASE_CATEGORIES = ['tshirt','shirt','sweater','hoodie','jacket','coat','jeans','pants','dress','skirt','top','shorts','cardigan']
+const CATEGORY_SET = new Set(BASE_CATEGORIES)
+
+const FIT_TERMS = ['slim-fit','slim fit','slim','oversized','regular','loose','tapered','relaxed']
+
+const STYLE_ADJECTIVES = [
+	'v-neck','vneck','crew','crewneck','cropped','crop','ribbed','graphic','plain','striped','floral','linen','cotton','wool','knit'
+]
+
+const GENDER_TERMS = ['men','mens','women','womens','unisex','boys','girls']
+const SIZE_TERMS = ['xxs','xs','s','m','l','xl','xxl','xxxl','2xl','3xl']
+
+// Naive singularization (remove trailing 's' when >3 chars and not ending with 'ss')
+function singularize(token: string) {
+	if (token.length > 3 && token.endsWith('s') && !token.endsWith('ss')) return token.slice(0,-1)
+	return token
+}
+
+function normalizeToken(tok: string): string {
+	let t = tok.toLowerCase().trim()
+	t = t.replace(/[_]+/g,'-')
+	t = singularize(t)
+	if (COLOR_SYNONYMS[t]) t = COLOR_SYNONYMS[t]
+	if (CATEGORY_SYNONYMS[t]) t = CATEGORY_SYNONYMS[t]
+	return t
+}
+
+function tokenize(raw: string): string[] {
+	return raw
+		.toLowerCase()
+		.split(/[^a-z0-9+]+/i)
+		.filter(Boolean)
+		.map(normalizeToken)
+}
+
 function parseQuery(raw: string) {
+	const tokens = tokenize(raw)
+	const color = tokens.find(t => COLOR_SET.has(t)) || null
+	// Fit: look for two-word forms first by scanning original raw
 	const lower = raw.toLowerCase()
-	const colors = ['black','white','red','blue','green','yellow','purple','pink','gray','grey','beige','brown','navy','orange']
-	const fits = ['slim-fit','slim fit','oversized','regular','loose','tapered','relaxed']
-	const categories = ['tshirt','t-shirt','shirt','sweater','hoodie','jacket','coat','jeans','pants','trousers','dress','skirt','blouse','top','shorts','cardigan']
-	const foundColor = colors.find(c => lower.includes(c))
-	const foundFitRaw = fits.find(f => lower.includes(f))
-	const foundFit = foundFitRaw?.replace(' ', '-')
-	const foundCategoryRaw = categories.find(c => lower.includes(c))
-	const foundCategory = foundCategoryRaw?.replace('t-shirt','tshirt')
-	return { color: foundColor, fit: foundFit, category: foundCategory }
+	let fit: string | null = null
+	for (const f of FIT_TERMS) {
+		if (lower.includes(f)) { fit = f.replace(' ', '-'); break }
+	}
+	const category = tokens.find(t => CATEGORY_SET.has(t)) || null
+	return { color, fit, category }
 }
 
 // Guardrail configuration (lightweight, deterministic – extend / externalize later)
+// Precompile allowed apparel patterns with word boundaries to avoid partial matches.
 const ALLOWED_KEYWORDS = [
 	'tshirt','t-shirt','tee','shirt','sweater','jumper','hoodie','sweatshirt','jacket','coat','jeans','denim','pants','trousers','chinos','dress','skirt','blouse','top','tank','tank top','camisole','cami','shorts','cardigan','pullover','crewneck','long sleeve','long-sleeve','crop top','cropped','polo','henley'
 ]
+const ALLOWED_REGEXES = ALLOWED_KEYWORDS.map(k => new RegExp(`(^|\b)${k.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')}(\b|$)`,'i'))
 
 // Items we explicitly want to exclude to keep results apparel-focused
 const BLOCKED_KEYWORDS = [
@@ -31,7 +103,98 @@ function isClothingTitle(title?: string): boolean {
 	if (!title) return false
 	const t = title.toLowerCase()
 	if (BLOCKED_KEYWORDS.some(b => t.includes(b))) return false
-	return ALLOWED_KEYWORDS.some(k => t.includes(k))
+	return ALLOWED_REGEXES.some(re => re.test(t))
+}
+
+// --- Fuzzy utilities ---
+function normalizeTitleForKey(str: string): string {
+	return str.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')
+}
+
+function levenshtein(a: string, b: string): number {
+	if (a === b) return 0
+	const m = a.length, n = b.length
+	if (m === 0) return n
+	if (n === 0) return m
+	const dp = new Array(n + 1)
+	for (let j=0;j<=n;j++) dp[j]=j
+	for (let i=1;i<=m;i++) {
+		let prev = dp[0]
+		dp[0] = i
+		for (let j=1;j<=n;j++) {
+			const tmp = dp[j]
+			if (a[i-1] === b[j-1]) dp[j] = prev
+			else dp[j] = Math.min(prev + 1, dp[j] + 1, dp[j-1] + 1)
+			prev = tmp
+		}
+	}
+	return dp[n]
+}
+
+function similarityRatio(a: string, b: string): number {
+	const dist = levenshtein(a,b)
+	const maxLen = Math.max(a.length, b.length)
+	if (maxLen === 0) return 1
+	return 1 - dist / maxLen
+}
+
+function fuzzyDeduplicate(items: SerpShoppingResult[], threshold = 0.88): SerpShoppingResult[] {
+	const out: SerpShoppingResult[] = []
+	const normMap: string[] = []
+	for (const r of items) {
+		const t = r.title ? normalizeTitleForKey(r.title) : ''
+		let isDup = false
+		for (let i=0;i<normMap.length;i++) {
+			if (similarityRatio(t, normMap[i]) >= threshold) { isDup = true; break }
+		}
+		if (!isDup) {
+			normMap.push(t)
+			out.push(r)
+		}
+	}
+	return out
+}
+
+function computeScore(rating?: number, reviews?: number): number {
+	if (!rating) return 0
+	const rev = Math.max(0, reviews || 0)
+	return Math.pow(rating, 2) * Math.log(1 + rev)
+}
+
+interface DiversityKey { color?: string|null; category?: string|null }
+
+function extractColorCategory(title?: string): DiversityKey {
+	if (!title) return {}
+	const tokens = tokenize(title)
+	const color = tokens.find(t => COLOR_SET.has(t)) || null
+	const category = tokens.find(t => CATEGORY_SET.has(t)) || null
+	return { color, category }
+}
+
+function applyDiversity<T extends { title?: string }>(items: T[], maxPerBucket = 3): T[] {
+	if (items.length <= 3) return items
+	const buckets = new Map<string, T[]>()
+	for (const it of items) {
+		const { color, category } = extractColorCategory(it.title)
+		const key = `${color||'any'}|${category||'any'}`
+		if (!buckets.has(key)) buckets.set(key, [])
+		const arr = buckets.get(key)!
+		if (arr.length < maxPerBucket) arr.push(it)
+	}
+	// Round-robin merge
+	const orderedBuckets = Array.from(buckets.values())
+	const result: T[] = []
+	let added = true
+	while (added && result.length < 50) { // safety cap
+		added = false
+		for (const b of orderedBuckets) {
+			if (b.length === 0) continue
+			result.push(b.shift() as T)
+			added = true
+			if (result.length >= 50) break
+		}
+	}
+	return result
 }
 
 interface GuardrailMetrics {
@@ -62,8 +225,12 @@ export async function GET(req: NextRequest) {
 	if (!q) return NextResponse.json({ error: 'Missing q param' }, { status: 400 })
 
 	const parsed = parseQuery(q)
-	// Enrich query by reinforcing clothing intent to bias API towards garments only.
-	const queryParts = [parsed.color, parsed.fit, parsed.category, q, 'apparel clothing garment']
+	// Enrich query by reinforcing clothing intent + detected style/gender/size tokens to bias API.
+	const rawTokens = tokenize(q)
+	const styleToken = rawTokens.find(t => STYLE_ADJECTIVES.includes(t))
+	const genderToken = rawTokens.find(t => GENDER_TERMS.includes(t))
+	const sizeToken = rawTokens.find(t => SIZE_TERMS.includes(t))
+	const queryParts = [parsed.color, parsed.fit, parsed.category, styleToken, genderToken, sizeToken, q, 'apparel clothing garment']
 	const enriched = queryParts.filter(Boolean).join(' ') + ' lay-flat flat-lay'
 
 	const apiKey = process.env.SERPAPI_KEY
@@ -96,21 +263,23 @@ export async function GET(req: NextRequest) {
 			}))
 		}
 
-		// Deduplicate by link or title hash to reduce near duplicates before clothing filtering
+		// First pass: exact dedupe by link+title
 		const seen = new Set<string>()
-		const deduped: SerpShoppingResult[] = []
+		const exact: SerpShoppingResult[] = []
 		for (const r of results) {
 			const key = (r.link || '') + '|' + (r.title || '')
 			if (seen.has(key)) continue
 			seen.add(key)
-			deduped.push(r)
+			exact.push(r)
 		}
+		// Second pass: fuzzy dedupe by normalized title similarity
+		const deduped = fuzzyDeduplicate(exact)
 
-		// Apply guardrail clothing filter
-		const clothingOnly = deduped.filter(r => isClothingTitle(r.title))
-		// Fallback: if guardrail removes everything (overly strict) relax to previous heuristic but still block obvious non-clothing
-		const baselineFiltered = deduped.filter(r => r.thumbnail && r.title && !BLOCKED_KEYWORDS.some(b => (r.title||'').toLowerCase().includes(b)))
-		const finalSet = (clothingOnly.length >= 4 ? clothingOnly : baselineFiltered).slice(0, 25) // allow a few more before brand/price guardrails
+	// Apply guardrail clothing filter
+	const clothingOnly = deduped.filter(r => isClothingTitle(r.title))
+	// Fallback: if guardrail removes everything (overly strict) relax to previous heuristic but still block obvious non-clothing
+	const baselineFiltered = deduped.filter(r => r.thumbnail && r.title && !BLOCKED_KEYWORDS.some(b => (r.title||'').toLowerCase().includes(b)))
+	const finalSet = (clothingOnly.length >= 4 ? clothingOnly : baselineFiltered).slice(0, 40) // allow a few more before brand/price guardrails
 
 		// Brand/source blacklist (e.g., stock image providers we don't want to surface as apparel products)
 		const blacklistBrands = new Set(['shutterstock'])
@@ -170,7 +339,7 @@ export async function GET(req: NextRequest) {
 				price,
 				rating,
 				reviews,
-				_score: (reviews || 0) * (rating || 0),
+				_score: computeScore(rating, reviews),
 				extensions: r.extensions
 			}
 		})
@@ -206,7 +375,10 @@ export async function GET(req: NextRequest) {
 			if (ratingDiff) return ratingDiff
 			return (a.position||0) - (b.position||0)
 		})
-		brandUniqueItems = brandUniqueItems.slice(0,10)
+		brandUniqueItems = brandUniqueItems.slice(0,20)
+
+    // Diversity pass (round-robin across color/category buckets) then cap to 10
+    brandUniqueItems = applyDiversity(brandUniqueItems).slice(0,10)
 
 		const metrics: GuardrailMetrics = {
 			...baseMetrics,

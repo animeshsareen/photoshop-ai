@@ -1,5 +1,7 @@
-export const CREDITS_PER_DOLLAR = 10
+export const CREDITS_PER_DOLLAR = 6
 export const CREDIT_COST_PER_EDIT = 1
+// Number of free credits granted to a brand new user (first sign-in in this browser)
+export const DEFAULT_FREE_CREDITS = 2
 
 export function getCredits(): number {
   if (typeof window === "undefined") return 0
@@ -24,4 +26,18 @@ export function deductCredits(amount: number): boolean {
 export function addCredits(amount: number): void {
   const currentCredits = getCredits()
   setCredits(currentCredits + amount)
+}
+
+// Initialize credits for a new user if they have none stored locally yet.
+// Returns true if initialization happened.
+export function ensureInitialCredits(): boolean {
+  if (typeof window === "undefined") return false
+  const existing = localStorage.getItem("user_credits")
+  if (existing === null) {
+    setCredits(DEFAULT_FREE_CREDITS)
+    // Inform any listeners (e.g., credit display components)
+    window.dispatchEvent(new Event("creditsUpdated"))
+    return true
+  }
+  return false
 }

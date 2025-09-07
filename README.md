@@ -7,7 +7,7 @@ An AI-powered photo editing application that allows users to edit photos using n
 - **Google OAuth Authentication**: Secure sign-in with Google accounts
 - **AI Photo Editing**: Edit photos using natural language prompts
 - **Multiple Image Support**: Upload and process multiple images at once
-- **Credit System**: Pay-per-use credit system for AI operations
+- **Credit System**: Pay-per-use credit system for AI operations (new users automatically receive 2 free credits)
 - **Responsive Design**: Modern UI that works on all devices
 
 ## Getting Started

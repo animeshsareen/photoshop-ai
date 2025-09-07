@@ -46,7 +46,7 @@ export function CreditDisplay({ onPurchaseCredits }: CreditDisplayProps) {
             className="border-primary text-primary hover:bg-primary hover:text-primary-foreground bg-transparent"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Buy {CREDITS_PER_DOLLAR} for $1
+            Buy {CREDITS_PER_DOLLAR} for $0.99
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-1">Each edit costs 1 credit</p>
