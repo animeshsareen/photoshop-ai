@@ -8,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default function LandingContent() {
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-16">
+      <div className="container mx-auto px-4 py-24 md:py-32">
+        <div className="space-y-32 md:space-y-40">
         {/* Hero */}
-        <section className="text-center mb-16">
+        <section className="text-center">
           <h1 className="text-5xl font-bold text-foreground mb-6">
             Transform Your Photos with
             <span className="text-primary"> AI Magic</span>
@@ -30,40 +31,8 @@ export default function LandingContent() {
             </Button>
           </div>
         </section>
-
-        {/* Features */}
-        <section className="grid md:grid-cols-3 gap-8 mb-16">
-          <Card>
-            <CardHeader>
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <Image className="h-6 w-6 text-primary" />
-              </div>
-              <CardTitle>Multiple Image Support</CardTitle>
-              <CardDescription>Search for clothes in-line using natural language.</CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <Wand2 className="h-6 w-6 text-primary" />
-              </div>
-              <CardTitle>Natural Language Editing</CardTitle>
-              <CardDescription>Try before you buy!</CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <Shield className="h-6 w-6 text-primary" />
-              </div>
-              <CardTitle>Secure & Private</CardTitle>
-              <CardDescription>Your photos are processed securely and never stored permanently.</CardDescription>
-            </CardHeader>
-          </Card>
-        </section>
-
-        {/* How It Works */}
-        <section className="text-center mb-16">
+{/* How It Works */}
+  <section className="text-center">
           <h2 className="text-3xl font-bold text-foreground mb-8">How It Works</h2>
           <div className="grid md:grid-cols-4 gap-6">
             {["Sign In","Upload Photos","Describe Outfit","Get Result"].map((label, i) => (
@@ -76,15 +45,46 @@ export default function LandingContent() {
                   {i===0 && "Quick Google OAuth authentication"}
                   {i===1 && "Drag & drop images, or search."}
                   {i===2 && "Search or enter what you'd like to try on"}
-                  {i===3 && "Download your AI-generated image"}
+                  {i===3 && "Download your virtual try-on image."}
                 </p>
               </div>
             ))}
           </div>
         </section>
 
+        {/* Features */}
+  <section className="grid md:grid-cols-3 gap-8">
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                <Image className="h-6 w-6 text-primary" />
+              </div>
+              <CardTitle>Natural Language Search</CardTitle>
+              <CardDescription>Search for clothes in-line using natural language.</CardDescription>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                <Wand2 className="h-6 w-6 text-primary" />
+              </div>
+              <CardTitle>Try before you buy</CardTitle>
+              <CardDescription>Save time and shop smarter.</CardDescription>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                <Shield className="h-6 w-6 text-primary" />
+              </div>
+              <CardTitle>Secure & Private</CardTitle>
+              <CardDescription>Your photos are securely processed and never stored permanently.</CardDescription>
+            </CardHeader>
+          </Card>
+        </section>
+
         {/* CTA */}
-        <section>
+  <section>
           <Card className="max-w-2xl mx-auto text-center">
             <CardContent className="p-8">
               <h2 className="text-2xl font-bold text-foreground mb-4">Ready to Transform Your Photos?</h2>
@@ -98,6 +98,7 @@ export default function LandingContent() {
             </CardContent>
           </Card>
         </section>
+  </div>
       </div>
     </div>
   );

@@ -329,7 +329,7 @@ function PhotoEditorContent() {
                               {youImage.isCompressed && (<div className="absolute bottom-2 left-2 bg-primary/80 text-primary-foreground rounded-full px-2 py-1 text-xs">Compressed</div>)}
                             </div>
                             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1 justify-center">
-                              {youImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-green-500" /><span>{formatFileSize(youImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(youImage.originalSize)}</span></>) : (<span>{formatFileSize(youImage.originalSize)}</span>)}
+                              {youImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-sky-500" /><span>{formatFileSize(youImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(youImage.originalSize)}</span></>) : (<span>{formatFileSize(youImage.originalSize)}</span>)}
                             </div>
                           </div>
                         )}
@@ -358,7 +358,7 @@ function PhotoEditorContent() {
                               {clothingImage.isCompressed && (<div className="absolute bottom-2 left-2 bg-primary/80 text-primary-foreground rounded-full px-2 py-1 text-xs">Compressed</div>)}
                             </div>
                             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1 justify-center">
-                              {clothingImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-green-500" /><span>{formatFileSize(clothingImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(clothingImage.originalSize)}</span></>) : (<span>{formatFileSize(clothingImage.originalSize)}</span>)}
+                              {clothingImage.isCompressed ? (<><CheckCircle className="h-3 w-3 text-sky-500" /><span>{formatFileSize(clothingImage.compressedSize || 0)}</span><span className="text-muted-foreground">from {formatFileSize(clothingImage.originalSize)}</span></>) : (<span>{formatFileSize(clothingImage.originalSize)}</span>)}
                             </div>
                           </div>
                         )}
@@ -413,7 +413,7 @@ function PhotoEditorContent() {
               <div className="space-y-6 sticky top-8 self-start">
                 <Card className="min-h-[400px] flex flex-col">
                   <CardContent className="p-6 flex-1 flex flex-col">
-                    <h3 className="text-lg font-semibold text-foreground mb-4 text-center">AI Generated Result</h3>
+                    <h3 className="text-lg font-semibold text-foreground mb-4 text-center">Result</h3>
                     <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
                       {editedImage ? (
                         <Image src={editedImage} alt="AI edited image" fill className="object-cover" />
