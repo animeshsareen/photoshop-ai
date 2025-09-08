@@ -153,35 +153,24 @@ export async function POST(request: NextRequest) {
       model: "gemini-2.5-flash-image-preview", // Use the working model name
     })
 
-  const baseSystemPrompt = `You are a virtual fashion try-on assistant. You will always receive exactly two input images:
-	1.	PERSON photo (the model) – preserve identity, body shape, pose, lighting, and background.
-	2.	GARMENT photo – apply only this clothing item onto the person.
+  const baseSystemPrompt = `You are an advanced image editing and generation system.  
+The user can upload multiple reference images, and you have just read their text prompt describing desired edits. There may optionally be drawings or shapes on top of the images to highlight areas for modification.  
 
-TASK: Generate a single photorealistic image of the PERSON wearing the GARMENT.
+Your task:  
+1. Analyze all uploaded reference images together as context.  
+2. Interpret the user’s prompt carefully, ensuring that the requested edits are applied to the correct regions and in a realistic, cohesive way.  
+3. If the user has provided drawings or shapes, treat them as visual instructions that indicate where and how to apply changes.  
+4. Always generate a single, unified output image that incorporates the user’s edits while preserving the overall quality and integrity of the original references.  
 
-STRICT REQUIREMENTS:
-	•	Keep the person’s face, hair, skin, body proportions, hands, and background fully unchanged.
-	•	Fit the garment naturally to the person: correct size, drape, folds, perspective, and alignment with pose.
-	•	Reproduce fabric texture, material, color accuracy, logos, and patterns from the garment image with exact fidelity.
-	•	Ensure consistent lighting, shadows, and shading with the original photo.
-	•	Blend garment edges seamlessly, with no halos, artifacts, or distortions.
-	•	Do not add or alter anything else (no extra accessories, no different clothes, no text, no stylization).
-	•	If garment details (sleeves, neckline, length) are unclear, infer a subtle, plausible completion.
-	•	Deliver only the final edited image—no captions, alternatives, or other outputs.
-
-GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable from a real photo.
-
-⸻
-
-Do you want me to also rewrite it in a shorter “system-prompt style” version that you can drop straight into an API call, without explanations?`
+Output only the final edited image—do not include extra text, overlays, or intermediate steps.`
 
     // If the user supplied an additional (optional) prompt, append it in a controlled way.
-    let editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS (optional – follow only if they don't conflict):\n${userPrompt}` : baseSystemPrompt
+    let editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
     if (maskDataUrl) {
       editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
     }
 
-    console.log("[v0] Sending virtual try-on request to Gemini API with multiple images")
+    console.log("[v0] Sending edit request to Gemini API")
 
     let response
     try {
