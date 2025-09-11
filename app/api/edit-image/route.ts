@@ -164,10 +164,37 @@ Your task:
 
 Output only the final edited image—do not include extra text, overlays, or intermediate steps.`
 
-    // If the user supplied an additional (optional) prompt, append it in a controlled way.
-    let editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
-    if (maskDataUrl) {
-      editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
+    // TryMyClothes: dedicated virtual try-on system prompt
+    const tryOnSystemPrompt = `You are a virtual fashion try-on assistant. You will always receive exactly two input images:
+  1. PERSON photo (the model) – preserve identity, body shape, pose, lighting, and background.
+  2. GARMENT photo – apply only this clothing item onto the person.
+
+TASK: Generate a single photorealistic image of the PERSON wearing the GARMENT.
+
+STRICT REQUIREMENTS:
+  • Keep the person’s face, hair, skin, body proportions, hands, and background fully unchanged.
+  • Fit the garment naturally to the person: correct size, drape, folds, perspective, and alignment with pose.
+  • Reproduce fabric texture, material, color accuracy, logos, and patterns from the garment image with exact fidelity.
+  • Ensure consistent lighting, shadows, and shading with the original photo.
+  • Blend garment edges seamlessly, with no halos, artifacts, or distortions.
+  • Do not add or alter anything else (no extra accessories, no different clothes, no text, no stylization).
+  • If garment details (sleeves, neckline, length) are unclear, infer a subtle, plausible completion.
+  • Deliver only the final edited image—no captions, alternatives, or other outputs.
+
+GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable from a real photo.`
+
+    // Choose prompt based on mode: TryMyClothes (you_image + clothing_image) vs FreeEdit (default)
+    const isTryOnMode = !!youImage && !!clothingImage
+    let editPrompt: string
+    if (isTryOnMode) {
+      // Use strict virtual try-on prompt; ignore free-form user text for consistency
+      editPrompt = tryOnSystemPrompt
+    } else {
+      // FreeEdit: use base prompt and optional user instructions
+      editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
+      if (maskDataUrl) {
+        editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
+      }
     }
 
     console.log("[v0] Sending edit request to Gemini API")
