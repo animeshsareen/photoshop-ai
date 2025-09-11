@@ -20,6 +20,31 @@ async function compressImage(inputPath: string, outputPath: string, maxWidth = 8
   return outputPath;
 }
 
+// Detect if the request likely originates from a mobile device
+function isMobileRequest(request: NextRequest): boolean {
+  try {
+    const ua = request.headers.get("user-agent") || ""
+    const chMobile = request.headers.get("sec-ch-ua-mobile") // ?1 on mobile chromium
+    const qpMobile = request.nextUrl?.searchParams?.get("mobile")
+    if (qpMobile === "1" || qpMobile === "true") return true
+    if (chMobile === "?1") return true
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+  } catch {
+    return false
+  }
+}
+
+// Recompress generated image for mobile: cap width and convert to WebP
+async function recompressForMobile(base64Png: string) {
+  const inputBuffer = Buffer.from(base64Png, "base64")
+  const outputBuffer = await sharp(inputBuffer)
+    .rotate()
+    .resize({ width: 1080, withoutEnlargement: true })
+    .webp({ quality: 72 })
+    .toBuffer()
+  return { base64: outputBuffer.toString("base64"), mime: "image/webp" as const }
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log("[v0] API route called")
@@ -314,6 +339,21 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     console.log("[v0] Successfully generated single edited image from multiple inputs")
 
+    // For mobile clients, downscale + convert to WebP to reduce payload
+    const mobileClient = isMobileRequest(request)
+    let finalImageBase64 = generatedImageData
+    let finalMime: string = "image/png"
+    if (mobileClient) {
+      try {
+        const optimized = await recompressForMobile(generatedImageData)
+        finalImageBase64 = optimized.base64
+        finalMime = optimized.mime
+        console.log("[v0] Optimized output for mobile (WebP, max 1080w)")
+      } catch (e) {
+        console.warn("[v0] Mobile recompression failed, returning original PNG", e)
+      }
+    }
+
     // If mask provided, attempt naive merge (currently we just return the raw generated image; real blending could be implemented with sharp)
     // Persist mask + metadata temporarily (for future GET retrieval)
     if (maskDataUrl) {
@@ -332,10 +372,11 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
     }
 
     return NextResponse.json({
-      editedImageUrl: `data:image/png;base64,${generatedImageData}`,
+      editedImageUrl: `data:${finalMime};base64,${finalImageBase64}`,
       message: `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini 2.0 Flash`,
       usedMask: !!maskDataUrl,
       shapes: shapesMeta || undefined,
+      mobileOptimized: mobileClient,
     })
   } catch (error) {
     console.error("[v0] Error processing image:", error)
