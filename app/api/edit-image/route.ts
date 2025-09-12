@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { GoogleGenerativeAI } from "@google/generative-ai"
+import OpenAI from "openai"
+import { toFile } from "openai/uploads"
 import * as path from "path"
 import * as fs from "fs"
 import sharp from "sharp"
@@ -10,6 +12,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
 
 // Server-side image compression function
 async function compressImage(inputPath: string, outputPath: string, maxWidth = 800, quality = 70) {
@@ -50,9 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[v0] API route called")
 
-    if (!genAI) {
-      return NextResponse.json({ error: "GEMINI_API_KEY environment variable is not configured" }, { status: 500 })
-    }
+    // Note: We only require Gemini for TryOn; OpenEdit can use OpenAI
 
   const formData = await request.formData()
     const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
@@ -200,8 +201,9 @@ export async function POST(request: NextRequest) {
       }),
     )
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash-image-preview", // Use the working model name
+    // Prepare Gemini model (used for TryOn only)
+    const model = genAI?.getGenerativeModel({
+      model: "gemini-2.5-flash-image-preview",
     })
 
   const baseSystemPrompt = `You are an advanced image editing and generation system.  
@@ -248,14 +250,101 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       }
     }
 
-    console.log("[v0] Sending edit request to Gemini API")
+    console.log("[v0] Dispatching edit request to provider")
 
-    let response
+    // Execute request via provider based on mode
+    let response: any = null
+    let generatedImageData: string | null = null
+    let finalMime: string = "image/png"
+
     try {
-  response = await model.generateContent([editPrompt, ...imageParts])
-      console.log("[v0] Gemini API call successful")
+      if (isTryOnMode) {
+        if (!genAI || !model) {
+          return NextResponse.json({ error: "GEMINI_API_KEY environment variable is not configured" }, { status: 500 })
+        }
+        response = await model.generateContent([editPrompt, ...imageParts])
+        console.log("[v0] Gemini API call successful")
+      } else {
+        if (!openai) {
+          // Refund the credit if OpenAI isn't configured
+          try {
+            await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+            })
+          } catch {}
+          return NextResponse.json({ error: "OPENAI_API_KEY environment variable is not configured" }, { status: 500 })
+        }
+
+        // Use first image as the base for edits in OpenEdit
+        const baseImage = compressedImages[0]
+        const baseBuffer = Buffer.from(await baseImage.arrayBuffer())
+        const baseMeta = await sharp(baseBuffer).metadata()
+        const width = baseMeta.width || 1024
+        const height = baseMeta.height || 1024
+
+        // Build OpenAI inputs
+        let maskFile: File | undefined
+        if (maskDataUrl) {
+          try {
+            const maskBase64 = maskDataUrl.split(",")[1]
+            const maskBuffer = Buffer.from(maskBase64, "base64")
+            // Create transparent PNG mask for OpenAI edits: transparent (0 alpha) where edits ALLOWED
+            // Our mask has white for selected area -> convert white to alpha=0, others alpha=255
+            const alphaRaw = await sharp(maskBuffer)
+              .resize({ width, height })
+              .greyscale()
+              .threshold(200)
+              .negate()
+              .raw()
+              .toBuffer({ resolveWithObject: true })
+            const baseWhite = sharp({
+              create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } },
+            })
+            const maskPng = await baseWhite
+              .joinChannel(alphaRaw.data, { raw: { width, height, channels: 1 } })
+              .png()
+              .toBuffer()
+
+            // Use toFile to build InputFile
+            const inputMask = await toFile(maskPng, "mask.png")
+            // Type hack: toFile returns a compatible InputFile; SDK accepts it directly
+            ;(maskFile as any) = inputMask as any
+          } catch (e) {
+            console.warn("[v0] Failed to build OpenAI mask; proceeding without mask", e)
+          }
+        }
+
+        const inputImage = await toFile(baseBuffer, baseImage.name || "image.png")
+
+        let aiResult
+        if (maskFile) {
+          aiResult = await openai.images.edit({
+            model: "gpt-image-1",
+            image: inputImage as any,
+            mask: maskFile as any,
+            prompt: userPrompt || "Apply the requested edits only within the mask",
+            size: "1024x1024",
+          })
+        } else {
+          aiResult = await openai.images.edit({
+            model: "gpt-image-1",
+            image: inputImage as any,
+            prompt: userPrompt || "Apply the requested edits",
+            size: "1024x1024",
+          })
+        }
+
+        if (!aiResult || !aiResult.data || !aiResult.data.length || !aiResult.data[0].b64_json) {
+          throw new Error("OpenAI did not return an image")
+        }
+
+        generatedImageData = aiResult.data[0].b64_json as string
+        finalMime = "image/png"
+      }
     } catch (apiError) {
-      console.error("[v0] Gemini API call failed:", apiError)
+      console.error("[v0] Provider API call failed:", apiError)
 
       // Refund the credit on API failure
       try {
@@ -269,16 +358,16 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       if (apiError instanceof Error) {
         console.log("[v0] Error message:", apiError.message)
 
-        if (apiError.message.includes("API key")) {
+        if (apiError.message.includes("API key") || apiError.message.includes("apikey")) {
           return NextResponse.json({ 
-            error: "Invalid or missing API key for Gemini API",
-            suggestion: "Please check your API configuration."
+            error: "Invalid or missing API key",
+            suggestion: "Please check your API configuration for the selected provider."
           }, { status: 401 })
         }
-        if (apiError.message.includes("quota") || apiError.message.includes("limit")) {
+        if (apiError.message.includes("quota") || apiError.message.includes("limit") || apiError.message.includes("Rate limit")) {
           return NextResponse.json({ 
-            error: "API quota exceeded. Please try again later.",
-            suggestion: "You may have reached your daily API limit."
+            error: "API quota or rate limit exceeded.",
+            suggestion: "Please try again later."
           }, { status: 429 })
         }
         if (apiError.message.includes("model")) {
@@ -298,20 +387,20 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
         }
 
         return NextResponse.json({ 
-          error: `Gemini API error: ${apiError.message}`,
+          error: `Image generation error: ${apiError.message}`,
           suggestion: "Please try again with different images or a different prompt."
         }, { status: 500 })
       }
 
       return NextResponse.json({ 
-        error: "Unknown error occurred while calling Gemini API",
+        error: "Unknown error occurred while calling the image provider",
         suggestion: "Please try again later."
       }, { status: 500 })
     }
 
-    console.log("[v0] Received response from Gemini API")
+    console.log("[v0] Received response from provider")
 
-    if (!response || !response.response) {
+    if (isTryOnMode && (!response || !response.response)) {
       console.log("[v0] No response object from Gemini API")
       try {
         await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
@@ -326,7 +415,7 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       }, { status: 500 })
     }
 
-    if (!response.response.candidates || response.response.candidates.length === 0) {
+    if (isTryOnMode && (!response.response.candidates || response.response.candidates.length === 0)) {
       console.log("[v0] No candidates in response:", JSON.stringify(response.response))
       try {
         await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
@@ -352,63 +441,62 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
         suggestion: "Try a different prompt or check if your images are appropriate for AI processing."
       }, { status: 500 })
     }
+    if (isTryOnMode) {
+      const candidate = response.response.candidates[0]
 
-    const candidate = response.response.candidates[0]
-
-    if (candidate.finishReason === "SAFETY") {
-      return NextResponse.json({ 
-        error: "Content was filtered due to safety concerns",
-        suggestion: "Try a different prompt that doesn't involve potentially sensitive content."
-      }, { status: 400 })
-    }
-
-    if (!candidate.content || !candidate.content.parts) {
-      console.log("[v0] No content parts in response candidate")
-      try {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
-        })
-      } catch {}
-      return NextResponse.json({ 
-        error: "No content parts generated in response",
-        suggestion: "Try a different prompt or check your image quality."
-      }, { status: 500 })
-    }
-
-    let generatedImageData = null
-    for (const part of candidate.content.parts) {
-      if (part.inlineData) {
-        generatedImageData = part.inlineData.data
-        break
+      if (candidate.finishReason === "SAFETY") {
+        return NextResponse.json({ 
+          error: "Content was filtered due to safety concerns",
+          suggestion: "Try a different prompt that doesn't involve potentially sensitive content."
+        }, { status: 400 })
       }
-    }
 
-    if (!generatedImageData) {
-      console.log("[v0] No image generated in response")
-      try {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
-        })
-      } catch {}
-      return NextResponse.json({ 
-        error: "No image was generated",
-        suggestion: "Try a different prompt or ensure your images are clear and well-defined."
-      }, { status: 500 })
+      if (!candidate.content || !candidate.content.parts) {
+        console.log("[v0] No content parts in response candidate")
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+          })
+        } catch {}
+        return NextResponse.json({ 
+          error: "No content parts generated in response",
+          suggestion: "Try a different prompt or check your image quality."
+        }, { status: 500 })
+      }
+
+      for (const part of candidate.content.parts) {
+        if ((part as any).inlineData) {
+          generatedImageData = (part as any).inlineData.data
+          break
+        }
+      }
+
+      if (!generatedImageData) {
+        console.log("[v0] No image generated in response")
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+          })
+        } catch {}
+        return NextResponse.json({ 
+          error: "No image was generated",
+          suggestion: "Try a different prompt or ensure your images are clear and well-defined."
+        }, { status: 500 })
+      }
     }
 
     console.log("[v0] Successfully generated single edited image from multiple inputs")
 
     // For mobile clients, downscale + convert to WebP to reduce payload
-    const mobileClient = isMobileRequest(request)
-    let finalImageBase64 = generatedImageData
-    let finalMime: string = "image/png"
-    if (mobileClient) {
+  const mobileClient = isMobileRequest(request)
+  let finalImageBase64 = (generatedImageData || "") as string
+    if (mobileClient && finalImageBase64) {
       try {
-        const optimized = await recompressForMobile(generatedImageData)
+        const optimized = await recompressForMobile(finalImageBase64)
         finalImageBase64 = optimized.base64
         finalMime = optimized.mime
         console.log("[v0] Optimized output for mobile (WebP, max 1080w)")
@@ -436,7 +524,9 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     return NextResponse.json({
       editedImageUrl: `data:${finalMime};base64,${finalImageBase64}`,
-      message: `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini 2.0 Flash`,
+      message: isTryOnMode
+        ? `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini`
+        : `Single image successfully generated from ${compressedImages.length} input image(s) using OpenAI`,
       usedMask: !!maskDataUrl,
       shapes: shapesMeta || undefined,
       mobileOptimized: mobileClient,

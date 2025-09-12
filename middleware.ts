@@ -22,6 +22,7 @@ export default auth((req) => {
 export const config = {
   matcher: [
     "/app/:path*",
+    "/checkout/:path*",
     "/api/edit-image/:path*",
     "/api/create-payment-intent/:path*",
   "/api/checkout/:path*",
