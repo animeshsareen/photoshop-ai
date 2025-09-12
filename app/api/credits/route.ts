@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     // User-based flow
     if (userEmail) {
-      // Idempotency check against user ledger
+      // Idempotency check against user ledger (table: user_credit_ledger)
       if (idempotencyKey) {
         const { data: existing, error: ledErr } = await supabase
           .from("user_credit_ledger")

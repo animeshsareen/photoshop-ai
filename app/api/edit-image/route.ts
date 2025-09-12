@@ -288,7 +288,7 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
   // DeClutter: single-image cleanup system prompt
   const declutterSystemPrompt = `You are a professional photo cleanup assistant.
 INPUT: A single photo of a subject.
-TASK: Remove background noise, clutter, distractions, reflections, and artifacts while preserving the subject with natural edges and realistic lighting. Maintain original colors and texture of the subject. Keep the overall look photorealistic—no stylization, text, or overlays. If a selection mask is provided, ONLY clean inside the white (selected) area; leave other pixels unchanged.
+TASK: Remove people, items, artifacts from the picture's background while otherwise preserving the subject and the background with natural edges and realistic lighting. Maintain original colors and texture of the subject. Keep the overall look photorealistic—no stylization, text, or overlays. If a selection mask is provided, ONLY clean inside the white (selected) area; leave other pixels unchanged.
 
 Deliver only the final edited image.`
 
