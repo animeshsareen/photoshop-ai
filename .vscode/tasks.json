@@ -19,6 +19,14 @@
 			"args": [],
 			"isBackground": false,
 			"group": "test"
+		},
+		{
+			"label": "Run tests",
+			"type": "shell",
+			"command": "pnpm test",
+			"args": [],
+			"isBackground": false,
+			"group": "test"
 		}
 	]
 }

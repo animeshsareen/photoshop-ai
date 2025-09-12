@@ -176,6 +176,12 @@ Production (Vercel) environment checklist:
 
 Device identification is set via a `device_id` cookie by `middleware.ts` on first visit. The `/api/credits` route will auto-create a record with `DEFAULT_FREE_CREDITS` on first access.
 
+IP-based tracking (optional):
+
+- Set `CREDITS_TRACKING_MODE=ip` in your environment to key balances by client IP (`ip:<address>`) instead of the device cookie. Useful for kiosk/demo flows. Default is `device`.
+- You can also override per-request via query string: `/api/credits?by=ip` or `/api/credits?by=device`.
+- Responses now include `{ key, mode, deviceId, ip, credits }` for clarity.
+
 ## Contributing
 
 1. Fork the repository

@@ -21,6 +21,18 @@ function getClientIp(h: Headers): string | null {
   return ip
 }
 
+function resolveTrackingKey(req: NextRequest, h: Headers): { key: string; ip: string | null; mode: "ip" | "device"; deviceId: string | null } {
+  const queryMode = (req.nextUrl.searchParams.get("by") || "").toLowerCase()
+  const envMode = (process.env.CREDITS_TRACKING_MODE || "device").toLowerCase()
+  const mode: "ip" | "device" = (queryMode === "ip" || queryMode === "device") ? (queryMode as any) : (envMode === "ip" ? "ip" : "device")
+  const ip = getClientIp(h)
+  const cookieId = req.cookies.get("device_id")?.value || null
+  if (mode === "ip" && ip) return { key: `ip:${ip}`, ip, mode, deviceId: cookieId }
+  // Fallback to device if IP not available or mode is device
+  const deviceKey = cookieId ? `device:${cookieId}` : `device:unknown`
+  return { key: deviceKey, ip, mode: "device", deviceId: cookieId }
+}
+
 async function getOrCreateDevice(supabase: ReturnType<typeof getSupabaseAdmin>, deviceId: string, ip: string | null) {
   const { data, error } = await supabase
     .from("device_credits")
@@ -46,13 +58,11 @@ async function getOrCreateDevice(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
 export async function GET(req: NextRequest) {
   try {
-    const cookieId = req.cookies.get("device_id")?.value
-    if (!cookieId) return NextResponse.json({ error: "Missing device cookie" }, { status: 400 })
     const h = await headers()
-    const ip = getClientIp(h)
+    const { key, ip, mode, deviceId } = resolveTrackingKey(req, h)
     const supabase = getSupabaseAdmin()
-    const row = await getOrCreateDevice(supabase, cookieId, ip)
-    return NextResponse.json({ deviceId: cookieId, ip, credits: row.credits })
+    const row = await getOrCreateDevice(supabase, key, ip)
+    return NextResponse.json({ key, mode, deviceId, ip, credits: row.credits })
   } catch (e: any) {
     console.error("[credits] GET failed", e)
     return NextResponse.json({ error: e?.message || "Failed to fetch credits" }, { status: 500 })
@@ -61,32 +71,30 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieId = req.cookies.get("device_id")?.value
-    if (!cookieId) return NextResponse.json({ error: "Missing device cookie" }, { status: 400 })
+    const h = await headers()
+    const { key, ip, mode, deviceId } = resolveTrackingKey(req, h)
     const body = await req.json().catch(() => ({}))
     const { action, amount, reason, idempotencyKey } = body as { action: "add" | "deduct"; amount: number; reason?: string; idempotencyKey?: string }
     if (!action || typeof amount !== "number" || amount <= 0) {
       return NextResponse.json({ error: "Invalid action or amount" }, { status: 400 })
     }
-    const h = await headers()
-    const ip = getClientIp(h)
     const supabase = getSupabaseAdmin()
 
     // Ensure device exists
-    await getOrCreateDevice(supabase, cookieId, ip)
+    await getOrCreateDevice(supabase, key, ip)
 
     // Idempotency: if a ledger row with same key exists, return current balance
     if (idempotencyKey) {
       const { data: existing, error: ledErr } = await supabase
         .from("credit_ledger")
         .select("id, delta")
-        .eq("device_id", cookieId)
+        .eq("device_id", key)
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle()
       if (ledErr) throw ledErr
       if (existing) {
-        const { data: bal } = await supabase.from("device_credits").select("credits").eq("device_id", cookieId).single()
-        return NextResponse.json({ deviceId: cookieId, ip, credits: bal?.credits ?? 0, idempotent: true })
+        const { data: bal } = await supabase.from("device_credits").select("credits").eq("device_id", key).single()
+        return NextResponse.json({ key, mode, deviceId, ip, credits: bal?.credits ?? 0, idempotent: true })
       }
     }
 
@@ -97,7 +105,7 @@ export async function POST(req: NextRequest) {
     const { data: currentRow, error: curErr } = await supabase
       .from("device_credits")
       .select("credits")
-      .eq("device_id", cookieId)
+      .eq("device_id", key)
       .single()
     if (curErr) throw curErr
     const newBalance = (currentRow.credits || 0) + delta
@@ -108,11 +116,11 @@ export async function POST(req: NextRequest) {
     const { error: updErr } = await supabase
       .from("device_credits")
       .update({ credits: newBalance })
-      .eq("device_id", cookieId)
+      .eq("device_id", key)
     if (updErr) throw updErr
 
     const { error: ledInsErr } = await supabase.from("credit_ledger").insert({
-      device_id: cookieId,
+      device_id: key,
       ip_address: ip,
       delta,
       reason: reason || null,
@@ -122,7 +130,7 @@ export async function POST(req: NextRequest) {
       console.warn("[credits] ledger insert failed", ledInsErr)
     }
 
-    return NextResponse.json({ deviceId: cookieId, ip, credits: newBalance })
+    return NextResponse.json({ key, mode, deviceId, ip, credits: newBalance })
   } catch (e: any) {
     console.error("[credits] POST failed", e)
     return NextResponse.json({ error: e?.message || "Failed to update credits" }, { status: 500 })
