@@ -14,6 +14,29 @@ export default function Navigation() {
     signOut({ callbackUrl: "/" })
   }
 
+  const BroomIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      {/* handle */}
+      <path d="M14 3l7 7" />
+      {/* ferrule */}
+      <path d="M12.5 6.5l5 5" />
+      {/* broom head */}
+      <path d="M3 21c1-3 4-6 7-7l4 4c-1 3-4 6-7 7" />
+      {/* bristles */}
+      <path d="M9 18l3 3" />
+      <path d="M7 19l2 2" />
+    </svg>
+  )
+
   return (
     <nav className="bg-background border-b border-border">
       <div className="max-w-6xl mx-auto px-4">
@@ -35,6 +58,12 @@ export default function Navigation() {
               <Link href="/free-edit" prefetch>
                 <Paintbrush className="h-4 w-4 mr-1" />
                 OpenEdit
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="px-2" aria-label="DeClutter">
+              <Link href="/declutter" prefetch>
+                <BroomIcon className="h-4 w-4 mr-1" />
+                DeClutter
               </Link>
             </Button>
           </div>

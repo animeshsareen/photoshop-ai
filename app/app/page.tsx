@@ -13,7 +13,7 @@ import { CreditDisplay } from "@/components/credit-display"
 import UserProfile from "@/components/user-profile"
 import ProtectedRoute from "@/components/protected-route"
 import { useAuth } from "@/hooks/use-auth"
-import { getCredits, deductCredits, addCredits, CREDIT_COST_PER_EDIT, CREDITS_PER_DOLLAR } from "@/lib/credits"
+import { CREDIT_COST_PER_EDIT } from "@/lib/credits"
 import { 
   validateMultipleImages, 
   formatFileSize,
@@ -125,9 +125,7 @@ function PhotoEditorContent() {
     }
   }
 
-  useEffect(() => {
-    setCredits(getCredits())
-  }, [])
+  useEffect(() => { (async () => { try { const res = await fetch('/api/credits', { cache: 'no-store' }); if (res.ok) { const j = await res.json(); if (typeof j.credits === 'number') setCredits(j.credits) } } catch {} })() }, [])
 
   const processSingleFile = async (file: File, slot: 'you' | 'clothing') => {
     setUploadError(null)
@@ -206,9 +204,9 @@ function PhotoEditorContent() {
 
   const handleEditImages = async () => {
     if (!youImage || !clothingImage) return
-    const totalCost = CREDIT_COST_PER_EDIT
-    const currentCredits = getCredits()
-    if (currentCredits < totalCost) { alert(`Insufficient credits! You need ${totalCost} credit to generate.`); return }
+  const totalCost = CREDIT_COST_PER_EDIT
+  // Re-check latest server credits
+  try { const res = await fetch('/api/credits', { cache: 'no-store' }); if (res.ok) { const j = await res.json(); if (typeof j.credits === 'number') setCredits(j.credits); if ((j.credits ?? 0) < totalCost) { alert(`Insufficient credits! You need ${totalCost} credit to generate.`); return } } } catch {}
     // Estimate duration before starting call
     const totalSize = getTotalSize()
     const est = estimateGenerationDuration(totalSize)
@@ -223,9 +221,18 @@ function PhotoEditorContent() {
       formData.append('clothing_image', clothingImage.file)
       formData.append('prompt', "")
       const apiResponse = await fetch("/api/edit-image", { method: "POST", body: formData })
-      if (!apiResponse.ok) { const errorData = await apiResponse.json(); throw new Error(errorData.error || `Failed: ${apiResponse.status}`) }
+      if (!apiResponse.ok) {
+        if (apiResponse.status === 402) {
+          try { const r = await fetch('/api/credits', { cache: 'no-store' }); if (r.ok) { const k = await r.json(); if (typeof k.credits === 'number') setCredits(k.credits) } } catch {}
+          throw new Error('Insufficient credits')
+        }
+        const errorData = await apiResponse.json().catch(()=>({}))
+        throw new Error(errorData?.error || `Failed: ${apiResponse.status}`)
+      }
       const result = await apiResponse.json(); setEditedImage(result.editedImageUrl)
-      if (deductCredits(totalCost)) { setCredits(getCredits()); window.dispatchEvent(new Event("creditsUpdated")) }
+      // Refresh server credits
+      try { const r = await fetch('/api/credits', { cache: 'no-store' }); if (r.ok) { const k = await r.json(); if (typeof k.credits === 'number') setCredits(k.credits) } } catch {}
+      window.dispatchEvent(new Event("creditsUpdated"))
       // Force completion state
       setProgress(100)
       setRemainingSeconds(0)

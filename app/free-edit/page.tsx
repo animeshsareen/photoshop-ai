@@ -10,7 +10,7 @@ import { CreditDisplay } from '@/components/credit-display'
 import UserProfile from '@/components/user-profile'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/hooks/use-auth'
-import { getCredits, deductCredits, CREDIT_COST_PER_EDIT } from '@/lib/credits'
+import { CREDIT_COST_PER_EDIT } from '@/lib/credits'
 import { validateMultipleImages, formatFileSize, compressAndValidateImage, MAX_IMAGE_SIZE } from '@/lib/image-utils'
 import SubsectionEditor, { SubsectionEditorValue } from '@/components/subsection-editor'
 
@@ -49,7 +49,7 @@ function FreeEditContent() {
     fileInputYouRef.current?.click()
   }
 
-  useEffect(() => { setCredits(getCredits()) }, [])
+  useEffect(() => { (async () => { try { const res = await fetch('/api/credits', { cache: 'no-store' }); if (res.ok) { const j = await res.json(); if (typeof j.credits === 'number') setCredits(j.credits) } } catch {} })() }, [])
 
   const processFiles = async (fileList: File[] | FileList) => {
     setUploadError(null)
@@ -124,7 +124,8 @@ function FreeEditContent() {
   const handleEditImages = async () => {
   if (images.length === 0) return
     const totalCost = CREDIT_COST_PER_EDIT
-    if (getCredits() < totalCost) { alert(`Insufficient credits! Need ${totalCost}.`); return }
+  // Re-check latest server credits before submitting
+  try { const res = await fetch('/api/credits', { cache: 'no-store' }); if (res.ok) { const j = await res.json(); if (typeof j.credits === 'number') setCredits(j.credits); if ((j.credits ?? 0) < totalCost) { alert(`Insufficient credits! Need ${totalCost}.`); return } } } catch {}
     const totalSize = getTotalSize()
     const est = estimateGenerationDuration(totalSize)
     setEstimatedDuration(est); setGenerationStartTime(Date.now()); setProgress(0); setRemainingSeconds(est); setIsProcessing(true)
@@ -155,7 +156,10 @@ function FreeEditContent() {
   }
       const resp = await fetch('/api/edit-image', { method:'POST', body: formData })
       if (!resp.ok) { const err = await resp.json().catch(()=>({})); throw new Error(err.error || `Failed: ${resp.status}`) }
-      const json = await resp.json(); setEditedImage(json.editedImageUrl); if (deductCredits(totalCost)) { setCredits(getCredits()); window.dispatchEvent(new Event('creditsUpdated')) }
+  const json = await resp.json(); setEditedImage(json.editedImageUrl)
+  // Refresh credits from server since deduction happens server-side
+  try { const r = await fetch('/api/credits', { cache: 'no-store' }); if (r.ok) { const k = await r.json(); if (typeof k.credits === 'number') setCredits(k.credits) } } catch {}
+  window.dispatchEvent(new Event('creditsUpdated'))
       setProgress(100); setRemainingSeconds(0)
     } catch (e) { alert(e instanceof Error ? e.message : 'Edit failed') } finally { setIsProcessing(false) }
   }

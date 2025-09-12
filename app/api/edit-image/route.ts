@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData()
     const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
+    // Mode flags: try-on (implicit via you_image+clothing_image), declutter (explicit flag)
+    const modeRaw = ((formData.get("mode") as string | null) || (formData.get("feature") as string | null) || "").toLowerCase()
+    const declutterFlag = ((formData.get("declutter") as string | null) || "").toLowerCase()
+    const isDeClutterRequested = ["declutter", "de-clutter", "de_clutter"].includes(modeRaw) || declutterFlag === "1" || declutterFlag === "true"
     // Optional sub-section selection data
     const maskDataUrl = formData.get('mask') as string | null
     const shapesJson = formData.get('shapes') as string | null
@@ -221,6 +225,17 @@ export async function POST(request: NextRequest) {
 
   console.log(`[v0] Processing ${compressedImages.length} image(s) with total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB. User prompt length: ${userPrompt.length}. Mask? ${!!maskDataUrl}`)
 
+    // Enforce DeClutter single-image constraint
+    if (isDeClutterRequested && compressedImages.length !== 1) {
+      return NextResponse.json(
+        {
+          error: "DeClutter requires exactly one image",
+          suggestion: "Upload a single photo to clean background noise."
+        },
+        { status: 400 },
+      )
+    }
+
     const imageParts = await Promise.all(
       compressedImages.map(async (image) => {
         const imageBuffer = await image.arrayBuffer()
@@ -270,12 +285,29 @@ STRICT REQUIREMENTS:
 
 GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable from a real photo.`
 
+  // DeClutter: single-image cleanup system prompt
+  const declutterSystemPrompt = `You are a professional photo cleanup assistant.
+INPUT: A single photo of a subject.
+TASK: Remove background noise, clutter, distractions, reflections, and artifacts while preserving the subject with natural edges and realistic lighting. Maintain original colors and texture of the subject. Keep the overall look photorealistic—no stylization, text, or overlays. If a selection mask is provided, ONLY clean inside the white (selected) area; leave other pixels unchanged.
+
+Deliver only the final edited image.`
+
     // Choose prompt based on mode: TryMyClothes (you_image + clothing_image) vs OpenEdit (default)
     const isTryOnMode = !!youImage && !!clothingImage
+    const isDeClutterMode = !!isDeClutterRequested
     let editPrompt: string
     if (isTryOnMode) {
       // Use strict virtual try-on prompt; ignore free-form user text for consistency
       editPrompt = tryOnSystemPrompt
+    } else if (isDeClutterMode) {
+      // DeClutter: background noise removal for a single image
+      editPrompt = declutterSystemPrompt
+      if (userPrompt) {
+        editPrompt += `\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}`
+      }
+      if (maskDataUrl) {
+        editPrompt += `\n\nA selection mask was provided. ONLY clean inside the white (selected) area; keep all other pixels 100% identical to the original image.`
+      }
     } else {
       // OpenEdit: use base prompt and optional user instructions
       editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
@@ -292,12 +324,29 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
     let finalMime: string = "image/png"
 
     try {
-      if (isTryOnMode) {
+      if (isTryOnMode || isDeClutterMode) {
         if (!genAI || !model) {
           return NextResponse.json({ error: "GEMINI_API_KEY environment variable is not configured" }, { status: 500 })
         }
-        response = await model.generateContent([editPrompt, ...imageParts])
-        console.log("[v0] Gemini API call successful")
+        // Build Gemini inputs: TryOn -> both images; DeClutter -> only first image (+ optional mask image)
+        const geminiInputs: any[] = [editPrompt]
+        if (isTryOnMode) {
+          geminiInputs.push(...imageParts)
+        } else {
+          geminiInputs.push(imageParts[0])
+          if (maskDataUrl) {
+            try {
+              const maskHeader = maskDataUrl.split(",")[0] || "data:image/png;base64"
+              const maskMime = (maskHeader.split(":")[1] || "image/png;base64").split(";")[0] || "image/png"
+              const maskBase64 = maskDataUrl.split(",")[1]
+              if (maskBase64) {
+                geminiInputs.push({ inlineData: { data: maskBase64, mimeType: maskMime } })
+              }
+            } catch { /* ignore mask attachment errors */ }
+          }
+        }
+        response = await model.generateContent(geminiInputs as any)
+        console.log(`[$v0] Gemini API call successful (${isTryOnMode ? 'try-on' : 'declutter'})`)
       } else {
         if (!openai) {
           // Refund the credit if OpenAI isn't configured
@@ -447,7 +496,8 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     console.log("[v0] Received response from provider")
 
-    if (isTryOnMode && (!response || !response.response)) {
+    const isGeminiMode = isTryOnMode || isDeClutterMode
+    if (isGeminiMode && (!response || !response.response)) {
       console.log("[v0] No response object from Gemini API")
       try {
         await fetch(creditsUrl, {
@@ -462,7 +512,7 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       }, { status: 500 })
     }
 
-    if (isTryOnMode && (!response.response.candidates || response.response.candidates.length === 0)) {
+    if (isGeminiMode && (!response.response.candidates || response.response.candidates.length === 0)) {
       console.log("[v0] No candidates in response:", JSON.stringify(response.response))
       try {
         await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
@@ -488,7 +538,7 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
         suggestion: "Try a different prompt or check if your images are appropriate for AI processing."
       }, { status: 500 })
     }
-    if (isTryOnMode) {
+    if (isGeminiMode) {
       const candidate = response.response.candidates[0]
 
       if (candidate.finishReason === "SAFETY") {
@@ -573,6 +623,8 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       editedImageUrl: `data:${finalMime};base64,${finalImageBase64}`,
       message: isTryOnMode
         ? `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini`
+        : isDeClutterMode
+        ? `Background cleaned for ${compressedImages.length} image using Gemini`
         : `Single image successfully generated from ${compressedImages.length} input image(s) using OpenAI`,
       usedMask: !!maskDataUrl,
       shapes: shapesMeta || undefined,
