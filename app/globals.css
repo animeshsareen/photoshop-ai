@@ -76,7 +76,7 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-nunito, var(--font-geist-sans));
   --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -127,7 +127,7 @@
     scroll-behavior: smooth;
   }
   h2 {
-    font-family: var(--font-inter), var(--font-geist-sans), ui-sans-serif, system-ui;
+    font-family: var(--font-nunito), var(--font-inter), var(--font-geist-sans), ui-sans-serif, system-ui;
     font-weight: 700;
     letter-spacing: -0.01em;
   }
