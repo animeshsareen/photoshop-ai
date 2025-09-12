@@ -112,6 +112,25 @@ This app uses Supabase to store per-device credit balances and a ledger.
 Tables to create in Supabase SQL editor:
 
 ```sql
+-- Ensure case-insensitive text is available
+create extension if not exists citext with schema public;
+-- User-based credits (new)
+alter table public.users
+   add column if not exists credits integer not null default 0 check (credits >= 0);
+
+create table if not exists public.user_credit_ledger (
+   id bigint generated always as identity primary key,
+   user_email text not null references public.users(email) on delete cascade,
+   ip_address text,
+   delta integer not null,
+   reason text,
+   idempotency_key text,
+   created_at timestamp with time zone default now()
+);
+
+create index if not exists user_credit_ledger_email_idx on public.user_credit_ledger(user_email);
+create index if not exists user_credit_ledger_idemp_idx on public.user_credit_ledger(idempotency_key);
+
 create table if not exists public.device_credits (
    device_id text primary key,
    ip_address text,
@@ -136,9 +155,16 @@ create index if not exists credit_ledger_idempotency_idx on public.credit_ledger
 Auth-related tables (used by NextAuth sync in `lib/auth.ts`):
 
 ```sql
--- Basic user directory used by the app
+-- If you already have users.email as text, migrate to citext to avoid FK type mismatch
+create extension if not exists citext with schema public;
+alter table public.users alter column email type citext using email::citext;
+
+-- Ensure user_credit_ledger.user_email matches citext type
+alter table public.user_credit_ledger alter column user_email type citext using user_email::citext;
+
+-- Basic user directory used by the app (email is citext for case-insensitive uniqueness)
 create table if not exists public.users (
-   email text primary key,
+   email citext primary key,
    display_name text,
    image_url text,
    created_at timestamp with time zone default now()

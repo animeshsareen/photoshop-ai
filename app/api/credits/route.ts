@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { getSupabaseAdmin } from "@/lib/supabase"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
+import { auth } from "@/lib/auth"
 
 export const runtime = "nodejs"
 
@@ -58,9 +59,34 @@ async function getOrCreateDevice(supabase: ReturnType<typeof getSupabaseAdmin>, 
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await auth()
+    const userEmail = session?.user?.email as string | undefined
     const h = await headers()
     const { key, ip, mode, deviceId } = resolveTrackingKey(req, h)
     const supabase = getSupabaseAdmin()
+    if (userEmail) {
+      // Prefer user-based credits when authenticated
+      // Ensure user row exists and initialize credits if needed
+      const { data: userRow, error: userErr } = await supabase
+        .from("users")
+        .select("email, credits")
+        .eq("email", userEmail)
+        .maybeSingle()
+      if (userErr) throw userErr
+      let credits = userRow?.credits ?? null
+      if (credits === null || credits === undefined) {
+        const { data: up, error: upErr } = await supabase
+          .from("users")
+          .update({ credits: DEFAULT_FREE_CREDITS })
+          .eq("email", userEmail)
+          .select("credits")
+          .single()
+        if (upErr) throw upErr
+        credits = up.credits
+      }
+      return NextResponse.json({ key: `user:${userEmail}`, mode: "user", deviceId, ip, credits })
+    }
+
     const row = await getOrCreateDevice(supabase, key, ip)
     return NextResponse.json({ key, mode, deviceId, ip, credits: row.credits })
   } catch (e: any) {
@@ -71,6 +97,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth()
+    const userEmail = session?.user?.email as string | undefined
     const h = await headers()
     const { key, ip, mode, deviceId } = resolveTrackingKey(req, h)
     const body = await req.json().catch(() => ({}))
@@ -80,6 +108,46 @@ export async function POST(req: NextRequest) {
     }
     const supabase = getSupabaseAdmin()
 
+    // User-based flow
+    if (userEmail) {
+      // Idempotency check against user ledger
+      if (idempotencyKey) {
+        const { data: existing, error: ledErr } = await supabase
+          .from("user_credit_ledger")
+          .select("id, delta")
+          .eq("user_email", userEmail)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle()
+        if (ledErr) throw ledErr
+        if (existing) {
+          const { data: bal } = await supabase.from("users").select("credits").eq("email", userEmail).single()
+          return NextResponse.json({ key: `user:${userEmail}`, mode: "user", deviceId, ip, credits: bal?.credits ?? 0, idempotent: true })
+        }
+      }
+
+      const delta = action === "add" ? Math.abs(amount) : -Math.abs(amount)
+      const { data: cur, error: curErr } = await supabase
+        .from("users")
+        .select("credits")
+        .eq("email", userEmail)
+        .single()
+      if (curErr) throw curErr
+      const newBalance = (cur.credits || 0) + delta
+      if (newBalance < 0) return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
+      const { error: updErr } = await supabase.from("users").update({ credits: newBalance }).eq("email", userEmail)
+      if (updErr) throw updErr
+      const { error: ledUserErr } = await supabase.from("user_credit_ledger").insert({
+        user_email: userEmail,
+        ip_address: ip,
+        delta,
+        reason: reason || null,
+        idempotency_key: idempotencyKey || null,
+      })
+      if (ledUserErr) console.warn("[credits] user ledger insert failed", ledUserErr)
+      return NextResponse.json({ key: `user:${userEmail}`, mode: "user", deviceId, ip, credits: newBalance })
+    }
+
+    // Device-based fallback (legacy)
     // Ensure device exists
     await getOrCreateDevice(supabase, key, ip)
 

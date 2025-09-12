@@ -7,6 +7,8 @@ import * as path from "path"
 import * as fs from "fs"
 import sharp from "sharp"
 
+export const runtime = "nodejs"
+
 if (!process.env.GEMINI_API_KEY) {
   console.error("[v0] GEMINI_API_KEY environment variable is not set")
 }
@@ -22,6 +24,25 @@ async function compressImage(inputPath: string, outputPath: string, maxWidth = 8
     .toFile(outputPath);
   
   return outputPath;
+}
+
+// OpenAI Images API accepts only JPEG, PNG, WEBP
+const SUPPORTED_OPENAI_MIME = new Set(["image/jpeg", "image/png", "image/webp"])
+
+// Ensure buffer + filename + mime are acceptable to OpenAI; convert if needed
+async function ensureSupportedImage(buffer: Buffer, originalMime?: string | null, originalName?: string | null) {
+  const inMime = (originalMime || "").toLowerCase()
+  let outBuf = buffer
+  let outMime = inMime
+  let outName = originalName || "image.png"
+  if (!SUPPORTED_OPENAI_MIME.has(inMime)) {
+    // Convert unknown or unsupported format (e.g., HEIC, octet-stream) to PNG
+    outBuf = await sharp(buffer).toFormat("png").toBuffer()
+    outMime = "image/png"
+    const parsed = path.parse(outName)
+    outName = `${parsed.name || "image"}.png`
+  }
+  return { buffer: outBuf, mime: outMime, name: outName }
 }
 
 // Detect if the request likely originates from a mobile device
@@ -98,11 +119,22 @@ export async function POST(request: NextRequest) {
     const xf = h.get("x-forwarded-for") || ""
     const ip = xf ? xf.split(",")[0]?.trim() || null : h.get("x-real-ip") || null
 
+    // Resolve absolute base URL for internal server fetches
+    const getBaseUrl = () => {
+      const envUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").trim()
+      if (envUrl) return envUrl.replace(/\/$/, "")
+      try { return request.nextUrl.origin } catch { /* no-op */ }
+      const host = request.headers.get("host") || "localhost:3000"
+      const proto = request.headers.get("x-forwarded-proto") || "http"
+      return `${proto}://${host}`
+    }
+    const creditsUrl = `${getBaseUrl()}/api/credits`
+    const forwardCookie = request.headers.get("cookie") || ""
+
     const idempotencyKey = `edit:${cookieId}:${Date.now()}:${Math.random().toString(36).slice(2)}`
-    const creditsResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+    const creditsResp = await fetch(creditsUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      // Do not forward cookies from fetch explicitly; credits route reads device cookie from request
+      headers: { "content-type": "application/json", cookie: forwardCookie },
       body: JSON.stringify({ action: "deduct", amount: 1, reason: "edit-image", idempotencyKey }),
     })
     if (!creditsResp.ok) {
@@ -134,8 +166,9 @@ export async function POST(request: NextRequest) {
             fs.mkdirSync(tempDir, { recursive: true })
           }
           
-          const inputPath = path.join(tempDir, `input-${Date.now()}-${image.name}`)
-          const outputPath = path.join(tempDir, `compressed-${Date.now()}-${image.name}`)
+          const parsedIn = path.parse(image.name || "image")
+          const inputPath = path.join(tempDir, `input-${Date.now()}-${parsedIn.name}${parsedIn.ext || ""}`)
+          const outputPath = path.join(tempDir, `compressed-${Date.now()}-${parsedIn.name}.jpg`)
           
           // Write the original file to disk
           const arrayBuffer = await image.arrayBuffer()
@@ -147,11 +180,12 @@ export async function POST(request: NextRequest) {
           // Read the compressed file
           const compressedBuffer = fs.readFileSync(outputPath)
           
-          // Create a new File object with compressed data
+          // Create a new File object with compressed data; ensure correct JPEG extension and MIME
+          const jpegName = `${parsedIn.name || "image"}.jpg`
           const compressedFile = new File(
             [compressedBuffer], 
-            image.name, 
-            { type: image.type }
+            jpegName, 
+            { type: "image/jpeg" }
           )
           
           console.log(`[v0] Compressed ${image.name}: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB (was ${(image.size / 1024 / 1024).toFixed(2)}MB)`)
@@ -268,21 +302,21 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
         if (!openai) {
           // Refund the credit if OpenAI isn't configured
           try {
-            await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+            await fetch(creditsUrl, {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: { "content-type": "application/json", cookie: forwardCookie },
               body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
             })
           } catch {}
           return NextResponse.json({ error: "OPENAI_API_KEY environment variable is not configured" }, { status: 500 })
         }
 
-        // Use first image as the base for edits in OpenEdit
-        const baseImage = compressedImages[0]
-        const baseBuffer = Buffer.from(await baseImage.arrayBuffer())
-        const baseMeta = await sharp(baseBuffer).metadata()
-        const width = baseMeta.width || 1024
-        const height = baseMeta.height || 1024
+  // Prepare base image and dimensions
+  const baseImage = compressedImages[0]
+  const baseBuffer = Buffer.from(await baseImage.arrayBuffer())
+  const baseMeta = await sharp(baseBuffer).metadata()
+  const width = baseMeta.width || 1024
+  const height = baseMeta.height || 1024
 
         // Build OpenAI inputs
         let maskFile: File | undefined
@@ -308,7 +342,7 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
               .toBuffer()
 
             // Use toFile to build InputFile
-            const inputMask = await toFile(maskPng, "mask.png")
+            const inputMask = await toFile(maskPng, "mask.png", { type: "image/png" })
             // Type hack: toFile returns a compatible InputFile; SDK accepts it directly
             ;(maskFile as any) = inputMask as any
           } catch (e) {
@@ -316,7 +350,19 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
           }
         }
 
-        const inputImage = await toFile(baseBuffer, baseImage.name || "image.png")
+  // Build OpenAI input files; support multiple images per docs when no mask is present
+  const normalizedBase = await ensureSupportedImage(baseBuffer, (baseImage as any).type, baseImage.name)
+  const inputImage = await toFile(normalizedBase.buffer, normalizedBase.name || "image.png", { type: normalizedBase.mime as any })
+        const additionalImages: any[] = []
+        if (!maskDataUrl && compressedImages.length > 1) {
+          for (let i = 1; i < compressedImages.length; i++) {
+            const f = compressedImages[i]
+            const buf = Buffer.from(await f.arrayBuffer())
+            const normalized = await ensureSupportedImage(buf, (f as any).type, f.name)
+            const fileObj = await toFile(normalized.buffer, normalized.name || `image_${i}.png`, { type: normalized.mime as any })
+            additionalImages.push(fileObj as any)
+          }
+        }
 
         let aiResult
         if (maskFile) {
@@ -328,9 +374,10 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
             size: "1024x1024",
           })
         } else {
+          const imagesParam = additionalImages.length ? ([inputImage as any, ...additionalImages] as any) : (inputImage as any)
           aiResult = await openai.images.edit({
             model: "gpt-image-1",
-            image: inputImage as any,
+            image: imagesParam,
             prompt: userPrompt || "Apply the requested edits",
             size: "1024x1024",
           })
@@ -348,9 +395,9 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
       // Refund the credit on API failure
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+        await fetch(creditsUrl, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", cookie: forwardCookie },
           body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
         })
       } catch {}
@@ -403,9 +450,9 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
     if (isTryOnMode && (!response || !response.response)) {
       console.log("[v0] No response object from Gemini API")
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+        await fetch(creditsUrl, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", cookie: forwardCookie },
           body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
         })
       } catch {}
@@ -476,9 +523,9 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       if (!generatedImageData) {
         console.log("[v0] No image generated in response")
         try {
-          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          await fetch(creditsUrl, {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: { "content-type": "application/json", cookie: forwardCookie },
             body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
           })
         } catch {}
@@ -538,9 +585,9 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
     try {
       const cookieId = request.cookies.get("device_id")?.value
       if (cookieId) {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+        await fetch(`${(process.env.NEXT_PUBLIC_SITE_URL || "").trim() || request.nextUrl.origin}/api/credits`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", cookie: request.headers.get("cookie") || "" },
           body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `edit:${cookieId}:fallback-refund` }),
         })
       }
