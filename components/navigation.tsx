@@ -34,7 +34,7 @@ export default function Navigation() {
             <Button asChild variant="ghost" size="sm" className="px-2" aria-label="Free Edit">
               <Link href="/free-edit" prefetch>
                 <Paintbrush className="h-4 w-4 mr-1" />
-                FreeEdit
+                OpenEdit
               </Link>
             </Button>
           </div>

@@ -2,6 +2,8 @@ import NextAuth from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
+import crypto from 'crypto'
+import { getSupabaseAdmin } from './supabase'
 
 // NextAuth v5 configuration using the new helper
 // Build providers list conditionally so missing env vars don't crash dev
@@ -116,7 +118,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   authorized({ auth }: { auth?: any }) {
       return !!auth?.user
     },
-    async jwt({ token, user }: any) {
+    async jwt({ token, user, trigger }: any) {
+      // On initial sign in, upsert user and create a session record
+      if (user?.email) {
+        try {
+          const supabase = getSupabaseAdmin()
+          // Upsert user
+          await supabase.from('users').upsert({
+            email: user.email,
+            display_name: user.name ?? null,
+            image_url: (user as any).image ?? null,
+          })
+          // Create a server-side session record if not present
+          const existingSid = (token as any).sid as string | undefined
+          if (!existingSid) {
+            const sid = crypto.randomUUID()
+            const maxAgeSec = Number(process.env.NEXTAUTH_SESSION_MAX_AGE ?? 60 * 60 * 24 * 7) // 7 days default
+            const expiresAt = new Date(Date.now() + maxAgeSec * 1000).toISOString()
+            await supabase.from('sessions').insert({
+              user_email: user.email,
+              session_token: sid,
+              user_agent: 'nextauth-jwt',
+              expires_at: expiresAt,
+            })
+            ;(token as any).sid = sid
+            ;(token as any).sid_expires = expiresAt
+          }
+        } catch (e) {
+          console.warn('Supabase user/session sync failed:', e)
+        }
+      }
       if (user) {
         ;(token as any).id = (user as any).id
         if ((user as any).accessToken) {
@@ -134,6 +165,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ;(session.user as any).id = (token.sub as string) ?? (token as any).id
       }
       ;(session as any).accessToken = (token as any).accessToken
+      ;(session as any).sid = (token as any).sid
+      ;(session as any).sid_expires = (token as any).sid_expires
       return session
     },
   },

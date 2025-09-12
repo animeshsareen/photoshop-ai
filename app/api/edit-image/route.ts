@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { headers } from "next/headers"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import * as path from "path"
 import * as fs from "fs"
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GEMINI_API_KEY environment variable is not configured" }, { status: 500 })
     }
 
-    const formData = await request.formData()
+  const formData = await request.formData()
     const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
     // Optional sub-section selection data
     const maskDataUrl = formData.get('mask') as string | null
@@ -85,6 +86,31 @@ export async function POST(request: NextRequest) {
     if (images.length === 0) {
       console.log("[v0] Missing images")
       return NextResponse.json({ error: "At least one image is required" }, { status: 400 })
+    }
+
+    // Server-side credit enforcement: deduct upfront, refund on failure
+    const cookieId = request.cookies.get("device_id")?.value
+    if (!cookieId) {
+      return NextResponse.json({ error: "Missing device cookie" }, { status: 400 })
+    }
+    const h = await headers()
+    const xf = h.get("x-forwarded-for") || ""
+    const ip = xf ? xf.split(",")[0]?.trim() || null : h.get("x-real-ip") || null
+
+    const idempotencyKey = `edit:${cookieId}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+    const creditsResp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Do not forward cookies from fetch explicitly; credits route reads device cookie from request
+      body: JSON.stringify({ action: "deduct", amount: 1, reason: "edit-image", idempotencyKey }),
+    })
+    if (!creditsResp.ok) {
+      const payload = await creditsResp.json().catch(() => ({} as any))
+      const status = creditsResp.status
+      if (status === 402) {
+        return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
+      }
+      return NextResponse.json({ error: payload?.error || "Failed to deduct credits" }, { status: 500 })
     }
 
     const MAX_IMAGE_SIZE = 4 * 1024 * 1024 // 4MB per image
@@ -208,14 +234,14 @@ STRICT REQUIREMENTS:
 
 GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable from a real photo.`
 
-    // Choose prompt based on mode: TryMyClothes (you_image + clothing_image) vs FreeEdit (default)
+    // Choose prompt based on mode: TryMyClothes (you_image + clothing_image) vs OpenEdit (default)
     const isTryOnMode = !!youImage && !!clothingImage
     let editPrompt: string
     if (isTryOnMode) {
       // Use strict virtual try-on prompt; ignore free-form user text for consistency
       editPrompt = tryOnSystemPrompt
     } else {
-      // FreeEdit: use base prompt and optional user instructions
+      // OpenEdit: use base prompt and optional user instructions
       editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
       if (maskDataUrl) {
         editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
@@ -230,6 +256,15 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
       console.log("[v0] Gemini API call successful")
     } catch (apiError) {
       console.error("[v0] Gemini API call failed:", apiError)
+
+      // Refund the credit on API failure
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+        })
+      } catch {}
 
       if (apiError instanceof Error) {
         console.log("[v0] Error message:", apiError.message)
@@ -278,6 +313,13 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     if (!response || !response.response) {
       console.log("[v0] No response object from Gemini API")
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+        })
+      } catch {}
       return NextResponse.json({ 
         error: "No response received from Gemini API",
         suggestion: "Please try again with a different prompt or images."
@@ -286,6 +328,13 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     if (!response.response.candidates || response.response.candidates.length === 0) {
       console.log("[v0] No candidates in response:", JSON.stringify(response.response))
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+        })
+      } catch {}
 
       // Check for blocked content
       if (response.response.promptFeedback?.blockReason) {
@@ -315,6 +364,13 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     if (!candidate.content || !candidate.content.parts) {
       console.log("[v0] No content parts in response candidate")
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+        })
+      } catch {}
       return NextResponse.json({ 
         error: "No content parts generated in response",
         suggestion: "Try a different prompt or check your image quality."
@@ -331,6 +387,13 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
 
     if (!generatedImageData) {
       console.log("[v0] No image generated in response")
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
+        })
+      } catch {}
       return NextResponse.json({ 
         error: "No image was generated",
         suggestion: "Try a different prompt or ensure your images are clear and well-defined."
@@ -380,6 +443,18 @@ GOAL: A single, best-quality, hyper-realistic try-on result indistinguishable fr
     })
   } catch (error) {
     console.error("[v0] Error processing image:", error)
+
+    // Refund on unexpected server error
+    try {
+      const cookieId = request.cookies.get("device_id")?.value
+      if (cookieId) {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `edit:${cookieId}:fallback-refund` }),
+        })
+      }
+    } catch {}
 
     if (error instanceof Error) {
       console.error("[v0] Error details:", error.message)

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { addCredits, CREDITS_PER_DOLLAR } from "@/lib/credits"
+import { CREDITS_PER_DOLLAR } from "@/lib/credits"
 
 export default function SuccessClient() {
   const params = useSearchParams()
@@ -18,10 +18,20 @@ export default function SuccessClient() {
       setApplied(true)
       return
     }
-    addCredits(CREDITS_PER_DOLLAR)
-    localStorage.setItem(key, "1")
-    window.dispatchEvent(new Event("creditsUpdated"))
-    setApplied(true)
+    ;(async () => {
+      try {
+        const res = await fetch("/api/credits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "add", amount: CREDITS_PER_DOLLAR, reason: `stripe:session:${sessionId}` , idempotencyKey: `stripe:${sessionId}`}),
+        })
+        if (res.ok) {
+          localStorage.setItem(key, "1")
+          window.dispatchEvent(new Event("creditsUpdated"))
+          setApplied(true)
+        }
+      } catch {}
+    })()
   }, [params])
 
   return (

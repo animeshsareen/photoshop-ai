@@ -56,7 +56,7 @@ export default function LandingContent() {
                 </Button>
                 <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-free-edit">
                   <Link href="/free-edit" prefetch>
-                    <Paintbrush className="h-5 w-5 mr-2" /> FreeEdit
+                    <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
                   </Link>
                 </Button>
               </>
@@ -136,14 +136,14 @@ export default function LandingContent() {
         <section className="mt-40 text-center" aria-labelledby="cta-end-heading">
           <h2 id="cta-end-heading" className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Ready to Experiment?</h2>
           <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-            Jump straight into editing or open the full workspace for multi‑outfit exploration.
+            Jump straight into virtual try-ons, or try OpenEdit for natural language editing.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button asChild size="lg" data-testid="cta-bottom-primary">
-              <Link href={isAuthed ? "/app" : "/auth/signin"}>{isAuthed ? "Open Workspace" : "Get Started Free"}</Link>
+              <Link href={isAuthed ? "/app" : "/auth/signin"}>{isAuthed ? "TryMyClothes" : "Get Started Free"}</Link>
             </Button>
             <Button variant="outline" asChild size="lg" data-testid="cta-bottom-secondary">
-              <Link href="/free-edit" prefetch>Try Free Editor</Link>
+              <Link href="/free-edit" prefetch>OpenEdit</Link>
             </Button>
           </div>
         </section>

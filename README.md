@@ -86,6 +86,7 @@ npm run dev
 - `/api/auth/[...nextauth]` - NextAuth.js authentication endpoints
 - `/api/edit-image` - AI image editing endpoint (protected)
 - `/api/create-payment-intent` - Payment processing (protected)
+- `/api/credits` - Get/add/deduct device-based credits (server-side)
 
 ## Technologies Used
 
@@ -95,6 +96,7 @@ npm run dev
 - **Tailwind CSS** - Styling
 - **Radix UI** - UI components
 - **Google Gemini AI** - Image processing
+- **Supabase** - Device credit storage and ledger
 
 ## Security Features
 
@@ -102,6 +104,44 @@ npm run dev
 - Secure session management
 - OAuth 2.0 authentication flow
 - Environment variable protection
+
+## Credits Backend (Supabase)
+
+This app uses Supabase to store per-device credit balances and a ledger.
+
+Tables to create in Supabase SQL editor:
+
+```sql
+create table if not exists public.device_credits (
+   device_id text primary key,
+   ip_address text,
+   credits integer not null default 0,
+   updated_at timestamp with time zone default now()
+);
+
+create table if not exists public.credit_ledger (
+   id bigint generated always as identity primary key,
+   device_id text not null references public.device_credits(device_id) on delete cascade,
+   ip_address text,
+   delta integer not null,
+   reason text,
+   idempotency_key text,
+   created_at timestamp with time zone default now()
+);
+
+create index if not exists credit_ledger_device_id_idx on public.credit_ledger(device_id);
+create index if not exists credit_ledger_idempotency_idx on public.credit_ledger(idempotency_key);
+```
+
+Environment variables required:
+
+```env
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+# (optional for client reads) SUPABASE_ANON_KEY=...
+```
+
+Device identification is set via a `device_id` cookie by `middleware.ts` on first visit. The `/api/credits` route will auto-create a record with `DEFAULT_FREE_CREDITS` on first access.
 
 ## Contributing
 

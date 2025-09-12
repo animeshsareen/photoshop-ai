@@ -23,7 +23,7 @@ interface SelectedImage {
   isCompressed: boolean
 }
 
-function FreeEditContent() {
+function OpenEditContent() {
   const { user } = useAuth()
   // Support multiple images now
   const [images, setImages] = useState<SelectedImage[]>([])
@@ -167,7 +167,7 @@ function FreeEditContent() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="text-center flex-1">
-            <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">FreeEdit</h1>
+            <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">OpenEdit</h1>
             <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}!</p>
             <p className="text-muted-forefround text-lg text-pretty">Upload images and describe your edits. </p>
           </div>
@@ -380,10 +380,10 @@ function FreeEditContent() {
   )
 }
 
-export default function FreeEditPage() {
+export default function OpenEditPage() {
   return (
     <ProtectedRoute>
-      <FreeEditContent />
+      <OpenEditContent />
     </ProtectedRoute>
   )
 }

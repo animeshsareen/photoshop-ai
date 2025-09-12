@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Coins, Plus } from "lucide-react"
-import { getCredits, CREDITS_PER_DOLLAR } from "@/lib/credits"
+import { CREDITS_PER_DOLLAR } from "@/lib/credits"
 
 interface CreditDisplayProps {
   onPurchaseCredits: () => void
@@ -14,20 +14,22 @@ export function CreditDisplay({ onPurchaseCredits }: CreditDisplayProps) {
   const [credits, setCredits] = useState(0)
 
   useEffect(() => {
-    setCredits(getCredits())
-
-    // Listen for credit changes
-    const handleStorageChange = () => {
-      setCredits(getCredits())
+    let ignore = false
+    const fetchCredits = async () => {
+      try {
+        const res = await fetch("/api/credits", { cache: "no-store" })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!ignore && typeof data.credits === "number") setCredits(data.credits)
+      } catch {}
     }
+    fetchCredits()
 
-    window.addEventListener("storage", handleStorageChange)
-    // Custom event for same-tab updates
-    window.addEventListener("creditsUpdated", handleStorageChange)
-
+    const handleChange = () => fetchCredits()
+    window.addEventListener("creditsUpdated", handleChange)
     return () => {
-      window.removeEventListener("storage", handleStorageChange)
-      window.removeEventListener("creditsUpdated", handleStorageChange)
+      ignore = true
+      window.removeEventListener("creditsUpdated", handleChange)
     }
   }, [])
 
