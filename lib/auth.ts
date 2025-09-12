@@ -1,8 +1,8 @@
+import { headers } from 'next/headers'
 import NextAuth from "next-auth"
 import Auth0 from "next-auth/providers/auth0"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
-import crypto from 'crypto'
 import { getSupabaseAdmin } from './supabase'
 
 // NextAuth v5 configuration using the new helper
@@ -132,13 +132,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Create a server-side session record if not present
           const existingSid = (token as any).sid as string | undefined
           if (!existingSid) {
-            const sid = crypto.randomUUID()
+            const sid = (globalThis.crypto?.randomUUID?.() ||
+              `${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`)
             const maxAgeSec = Number(process.env.NEXTAUTH_SESSION_MAX_AGE ?? 60 * 60 * 24 * 7) // 7 days default
             const expiresAt = new Date(Date.now() + maxAgeSec * 1000).toISOString()
+            // Capture client IP/User-Agent from forwarded headers (Vercel/Proxies)
+            let ip: string | null = null
+            let ua: string | null = null
+            try {
+              const h = await headers()
+              const xff = h.get('x-forwarded-for') || ''
+              if (xff) {
+                const first = xff.split(',')[0]?.trim()
+                if (first) ip = first
+              }
+              if (!ip) ip = h.get('x-real-ip') || null
+              ua = h.get('user-agent')
+              // Unwrap IPv4-mapped IPv6 and drop loopback in dev
+              if (ip && ip.startsWith('::ffff:')) ip = ip.slice(7)
+              if (ip === '::1' || ip === '127.0.0.1') ip = null
+            } catch {}
             await supabase.from('sessions').insert({
               user_email: user.email,
               session_token: sid,
-              user_agent: 'nextauth-jwt',
+              user_agent: ua || 'nextauth-jwt',
+              ip,
               expires_at: expiresAt,
             })
             ;(token as any).sid = sid

@@ -69,7 +69,7 @@ export default function LandingContent() {
                 </Button>
                 <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-try-editor">
                   <Link href="/free-edit" prefetch>
-                    Try Free Editor
+                    Try OpenEdit
                   </Link>
                 </Button>
               </>

@@ -133,6 +133,31 @@ create index if not exists credit_ledger_device_id_idx on public.credit_ledger(d
 create index if not exists credit_ledger_idempotency_idx on public.credit_ledger(idempotency_key);
 ```
 
+Auth-related tables (used by NextAuth sync in `lib/auth.ts`):
+
+```sql
+-- Basic user directory used by the app
+create table if not exists public.users (
+   email text primary key,
+   display_name text,
+   image_url text,
+   created_at timestamp with time zone default now()
+);
+
+-- Lightweight session registry (JWT strategy still used in NextAuth)
+create table if not exists public.sessions (
+   session_token text primary key,
+   user_email text not null references public.users(email) on delete cascade,
+   ip text,
+   user_agent text,
+   expires_at timestamp with time zone not null,
+   created_at timestamp with time zone default now()
+);
+
+create index if not exists sessions_user_email_idx on public.sessions(user_email);
+create index if not exists sessions_expires_at_idx on public.sessions(expires_at);
+```
+
 Environment variables required:
 
 ```env
@@ -140,6 +165,14 @@ SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 # (optional for client reads) SUPABASE_ANON_KEY=...
 ```
+
+Production (Vercel) environment checklist:
+
+- `NEXTAUTH_URL` set to your full production URL (e.g. `https://your-app.vercel.app`).
+- `NEXTAUTH_SECRET` set to a strong random string (e.g. `openssl rand -base64 32`).
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` present and scoped to both Build and Runtime.
+- Auth provider secrets (e.g. Auth0/Google) configured with production callback URLs.
+- Ensure the tables above exist in your Supabase project.
 
 Device identification is set via a `device_id` cookie by `middleware.ts` on first visit. The `/api/credits` route will auto-create a record with `DEFAULT_FREE_CREDITS` on first access.
 

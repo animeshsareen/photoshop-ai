@@ -8,12 +8,17 @@ export const runtime = "nodejs"
 type BalanceRow = { device_id: string; ip_address: string | null; credits: number; updated_at?: string }
 
 function getClientIp(h: Headers): string | null {
+  let ip: string | null = null
   const xf = h.get("x-forwarded-for") || ""
   if (xf) {
     const first = xf.split(",")[0]?.trim()
-    if (first) return first
+    if (first) ip = first
   }
-  return h.get("x-real-ip") || null
+  if (!ip) ip = h.get("x-real-ip") || null
+  // Normalize IPv6-mapped IPv4 and drop loopback
+  if (ip?.startsWith("::ffff:")) ip = ip.slice(7)
+  if (ip === "::1" || ip === "127.0.0.1") ip = null
+  return ip
 }
 
 async function getOrCreateDevice(supabase: ReturnType<typeof getSupabaseAdmin>, deviceId: string, ip: string | null) {
