@@ -114,10 +114,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "At least one image is required" }, { status: 400 })
     }
 
-    // Server-side credit enforcement: deduct upfront, refund on failure
-    const cookieId = request.cookies.get("device_id")?.value
-    if (!cookieId) {
-      return NextResponse.json({ error: "Missing device cookie" }, { status: 400 })
+    // Server-side credit enforcement: require authenticated user and deduct upfront
+    // `auth()` is implemented via NextAuth and syncs users to Supabase on sign-in.
+    const { auth } = await import("@/lib/auth")
+    const session = await auth()
+    const userEmail = session?.user?.email as string | undefined
+    if (!userEmail) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
     const h = await headers()
     const xf = h.get("x-forwarded-for") || ""
@@ -135,7 +138,7 @@ export async function POST(request: NextRequest) {
     const creditsUrl = `${getBaseUrl()}/api/credits`
     const forwardCookie = request.headers.get("cookie") || ""
 
-    const idempotencyKey = `edit:${cookieId}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+    const idempotencyKey = `edit:${userEmail}:${Date.now()}:${Math.random().toString(36).slice(2)}`
     const creditsResp = await fetch(creditsUrl, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: forwardCookie },
@@ -633,14 +636,16 @@ Deliver only the final edited image.`
   } catch (error) {
     console.error("[v0] Error processing image:", error)
 
-    // Refund on unexpected server error
+    // Refund on unexpected server error (use authenticated user idempotent refund)
     try {
-      const cookieId = request.cookies.get("device_id")?.value
-      if (cookieId) {
+      const { auth } = await import("@/lib/auth")
+      const session = await auth()
+      const userEmail = session?.user?.email as string | undefined
+      if (userEmail) {
         await fetch(`${(process.env.NEXT_PUBLIC_SITE_URL || "").trim() || request.nextUrl.origin}/api/credits`, {
           method: "POST",
           headers: { "content-type": "application/json", cookie: request.headers.get("cookie") || "" },
-          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `edit:${cookieId}:fallback-refund` }),
+          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `edit:${userEmail}:fallback-refund` }),
         })
       }
     } catch {}
