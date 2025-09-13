@@ -86,7 +86,7 @@ npm run dev
 - `/api/auth/[...nextauth]` - NextAuth.js authentication endpoints
 - `/api/edit-image` - AI image editing endpoint (protected)
 - `/api/create-payment-intent` - Payment processing (protected)
-- `/api/credits` - Get/add/deduct device-based credits (server-side)
+- `/api/credits` - Get/add/deduct user credits (authenticated, server-side)
 
 ## Technologies Used
 
@@ -96,7 +96,7 @@ npm run dev
 - **Tailwind CSS** - Styling
 - **Radix UI** - UI components
 - **Google Gemini AI** - Image processing
-- **Supabase** - Device credit storage and ledger
+- **Supabase** - User credit storage and ledger
 
 ## Security Features
 
@@ -131,25 +131,8 @@ create table if not exists public.user_credit_ledger (
 create index if not exists user_credit_ledger_email_idx on public.user_credit_ledger(user_email);
 create index if not exists user_credit_ledger_idemp_idx on public.user_credit_ledger(idempotency_key);
 
-create table if not exists public.device_credits (
-   device_id text primary key,
-   ip_address text,
-   credits integer not null default 0,
-   updated_at timestamp with time zone default now()
-);
-
-create table if not exists public.credit_ledger (
-   id bigint generated always as identity primary key,
-   device_id text not null references public.device_credits(device_id) on delete cascade,
-   ip_address text,
-   delta integer not null,
-   reason text,
-   idempotency_key text,
-   created_at timestamp with time zone default now()
-);
-
-create index if not exists credit_ledger_device_id_idx on public.credit_ledger(device_id);
-create index if not exists credit_ledger_idempotency_idx on public.credit_ledger(idempotency_key);
+-- Device-based credits have been removed. The app now uses user-based
+-- credits stored on `public.users` and a `user_credit_ledger` for auditing.
 ```
 
 Auth-related tables (used by NextAuth sync in `lib/auth.ts`):
@@ -200,13 +183,10 @@ Production (Vercel) environment checklist:
 - Auth provider secrets (e.g. Auth0/Google) configured with production callback URLs.
 - Ensure the tables above exist in your Supabase project.
 
-Device identification is set via a `device_id` cookie by `middleware.ts` on first visit. The `/api/credits` route will auto-create a record with `DEFAULT_FREE_CREDITS` on first access.
-
-IP-based tracking (optional):
-
-- Set `CREDITS_TRACKING_MODE=ip` in your environment to key balances by client IP (`ip:<address>`) instead of the device cookie. Useful for kiosk/demo flows. Default is `device`.
-- You can also override per-request via query string: `/api/credits?by=ip` or `/api/credits?by=device`.
-- Responses now include `{ key, mode, deviceId, ip, credits }` for clarity.
+The app uses authenticated user accounts to track credits. On first access
+the server will initialize a user's `credits` column to the configured
+`DEFAULT_FREE_CREDITS`. All balance changes are recorded in
+`user_credit_ledger` for auditing and idempotency checks.
 
 ## Contributing
 

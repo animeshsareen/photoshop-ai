@@ -253,10 +253,11 @@ export async function POST(request: NextRequest) {
       }),
     )
 
-    // Prepare Gemini model (used for TryOn only)
+    // Prepare Gemini model (used for TryOn and DeClutter)
     const model = genAI?.getGenerativeModel({
       model: "gemini-2.5-flash-image-preview",
     })
+    // (model availability check moved below after mode resolution)
 
   const baseSystemPrompt = `You are an advanced image editing and generation system.  
 The user can upload multiple reference images, and you have just read their text prompt describing desired edits. There may optionally be drawings or shapes on top of the images to highlight areas for modification.  
@@ -298,6 +299,10 @@ Deliver only the final edited image.`
     // Choose prompt based on mode: TryMyClothes (you_image + clothing_image) vs OpenEdit (default)
     const isTryOnMode = !!youImage && !!clothingImage
     const isDeClutterMode = !!isDeClutterRequested
+    if ((isTryOnMode || isDeClutterMode) && !model) {
+      console.error('[v0] Gemini model unavailable or GEMINI_API_KEY not set')
+      return NextResponse.json({ error: 'GEMINI model not available or GEMINI_API_KEY not configured', suggestion: 'Ensure GEMINI_API_KEY and model permissions are correct, or switch to OpenAI provider.' }, { status: 502 })
+    }
     let editPrompt: string
     if (isTryOnMode) {
       // Use strict virtual try-on prompt; ignore free-form user text for consistency
@@ -470,10 +475,12 @@ Deliver only the final edited image.`
           }, { status: 429 })
         }
         if (apiError.message.includes("model")) {
-          return NextResponse.json({ 
-            error: "Model not available. Try reducing image size or count.",
-            suggestion: "The selected model may not support the current image format or size."
-          }, { status: 400 })
+            console.error('[v0] Provider model error details:', apiError)
+            return NextResponse.json({ 
+              error: "Model not available or incompatible with the request.",
+              details: apiError.message,
+              suggestion: "Try reducing image size or count, verify your GEMINI model name/availability and key permissions, or check provider status.",
+            }, { status: 502 })
         }
         if (apiError.message.includes("size") || apiError.message.includes("large")) {
           return NextResponse.json(
