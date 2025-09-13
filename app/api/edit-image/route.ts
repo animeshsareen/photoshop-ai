@@ -3,6 +3,8 @@ import { headers } from "next/headers"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import OpenAI from "openai"
 import { toFile } from "openai/uploads"
+import { getSupabaseAdmin } from "@/lib/supabase"
+import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
 import * as path from "path"
 import * as fs from "fs"
 import sharp from "sharp"
@@ -135,22 +137,52 @@ export async function POST(request: NextRequest) {
       const proto = request.headers.get("x-forwarded-proto") || "http"
       return `${proto}://${host}`
     }
-    const creditsUrl = `${getBaseUrl()}/api/credits`
-    const forwardCookie = request.headers.get("cookie") || ""
-
     const idempotencyKey = `edit:${userEmail}:${Date.now()}:${Math.random().toString(36).slice(2)}`
-    const creditsResp = await fetch(creditsUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie: forwardCookie },
-      body: JSON.stringify({ action: "deduct", amount: 1, reason: "edit-image", idempotencyKey }),
-    })
-    if (!creditsResp.ok) {
-      const payload = await creditsResp.json().catch(() => ({} as any))
-      const status = creditsResp.status
-      if (status === 402) {
-        return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
+
+    // Helper: modify user credits using Supabase service role, idempotent via user_credit_ledger
+    async function modifyUserCredits(email: string, delta: number, reason?: string, idemp?: string) {
+      const supabase = getSupabaseAdmin()
+      // Idempotency check
+      if (idemp) {
+        const { data: existing, error: ledErr } = await supabase
+          .from("user_credit_ledger")
+          .select("id, delta")
+          .eq("user_email", email)
+          .eq("idempotency_key", idemp)
+          .maybeSingle()
+        if (ledErr) throw ledErr
+        if (existing) {
+          const { data: bal } = await supabase.from("users").select("credits").eq("email", email).single()
+          return { idempotent: true, credits: bal?.credits ?? 0 }
+        }
       }
-      return NextResponse.json({ error: payload?.error || "Failed to deduct credits" }, { status: 500 })
+
+      const { data: cur, error: curErr } = await supabase
+        .from("users")
+        .select("credits")
+        .eq("email", email)
+        .single()
+      if (curErr) throw curErr
+      const newBalance = (cur.credits || 0) + delta
+      if (newBalance < 0) return { error: "Insufficient credits", status: 402 }
+      const { error: updErr } = await supabase.from("users").update({ credits: newBalance }).eq("email", email)
+      if (updErr) throw updErr
+      const { error: ledUserErr } = await supabase.from("user_credit_ledger").insert({
+        user_email: email,
+        ip_address: ip,
+        delta,
+        reason: reason || null,
+        idempotency_key: idemp || null,
+      })
+      if (ledUserErr) console.warn("[credits] user ledger insert failed", ledUserErr)
+      return { credits: newBalance }
+    }
+
+    // Deduct 1 credit idempotently
+    const deductResult = await modifyUserCredits(userEmail, -1, "edit-image", idempotencyKey)
+    if ((deductResult as any).error) {
+      if ((deductResult as any).status === 402) return NextResponse.json({ error: "Insufficient credits" }, { status: 402 })
+      return NextResponse.json({ error: "Failed to deduct credits" }, { status: 500 })
     }
 
     const MAX_IMAGE_SIZE = 4 * 1024 * 1024 // 4MB per image
@@ -357,13 +389,9 @@ Deliver only the final edited image.`
         console.log(`[$v0] Gemini API call successful (${isTryOnMode ? 'try-on' : 'declutter'})`)
       } else {
         if (!openai) {
-          // Refund the credit if OpenAI isn't configured
+          // Refund the credit if OpenAI isn't configured (idempotent)
           try {
-            await fetch(creditsUrl, {
-              method: "POST",
-              headers: { "content-type": "application/json", cookie: forwardCookie },
-              body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
-            })
+            if (userEmail) await modifyUserCredits(userEmail, 1, "refund:edit-image", `${idempotencyKey}:refund`)
           } catch {}
           return NextResponse.json({ error: "OPENAI_API_KEY environment variable is not configured" }, { status: 500 })
         }
@@ -450,13 +478,9 @@ Deliver only the final edited image.`
     } catch (apiError) {
       console.error("[v0] Provider API call failed:", apiError)
 
-      // Refund the credit on API failure
+      // Refund the credit on API failure (idempotent)
       try {
-        await fetch(creditsUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json", cookie: forwardCookie },
-          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
-        })
+        if (userEmail) await modifyUserCredits(userEmail, 1, "refund:edit-image", `${idempotencyKey}:refund`)
       } catch {}
 
       if (apiError instanceof Error) {
@@ -510,11 +534,7 @@ Deliver only the final edited image.`
     if (isGeminiMode && (!response || !response.response)) {
       console.log("[v0] No response object from Gemini API")
       try {
-        await fetch(creditsUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json", cookie: forwardCookie },
-          body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
-        })
+        if (userEmail) await modifyUserCredits(userEmail, 1, "refund:edit-image", `${idempotencyKey}:refund`)
       } catch {}
       return NextResponse.json({ 
         error: "No response received from Gemini API",
@@ -583,9 +603,12 @@ Deliver only the final edited image.`
       if (!generatedImageData) {
         console.log("[v0] No image generated in response")
         try {
-          await fetch(creditsUrl, {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/credits`, {
             method: "POST",
-            headers: { "content-type": "application/json", cookie: forwardCookie },
+            headers: { 
+              "content-type": "application/json",
+              cookie: request.headers.get("cookie") || ""
+            },
             body: JSON.stringify({ action: "add", amount: 1, reason: "refund:edit-image", idempotencyKey: `${idempotencyKey}:refund` }),
           })
         } catch {}
