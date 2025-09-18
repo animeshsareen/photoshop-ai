@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Image, LogOut, LogIn, Shirt, Paintbrush } from "lucide-react"
+import { Image, LogOut, LogIn, Shirt, Paintbrush, Video } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -64,6 +64,12 @@ export default function Navigation() {
               <Link href="/declutter" prefetch>
                 <BroomIcon className="h-4 w-4 mr-1" />
                 DeClutter
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="px-2" aria-label="Thumbnail Studio">
+              <Link href="/thumbnail-studio" prefetch>
+                <Video className="h-4 w-4 mr-1" />
+                Thumbnail Studio
               </Link>
             </Button>
           </div>
