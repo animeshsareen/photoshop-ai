@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt } from "lucide-react"
+import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
@@ -44,7 +44,7 @@ export default function LandingContent() {
             Try your clothes <span className="text-primary">with AI</span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-            Virtual try‑ons, clothing search, and a freeform image editor.
+            Virtual try‑ons, clothing search, photo restoration, and a freeform image editor.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2" aria-label="Primary actions">
             {isAuthed ? (
@@ -59,6 +59,11 @@ export default function LandingContent() {
                     <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
                   </Link>
                 </Button>
+                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-restore-ai">
+                  <Link href="/restore-ai" prefetch>
+                    <RefreshCw className="h-5 w-5 mr-2" /> RestoreAI
+                  </Link>
+                </Button>
               </>
             ) : (
               <>
@@ -70,6 +75,11 @@ export default function LandingContent() {
                 <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-try-editor">
                   <Link href="/free-edit" prefetch>
                     Try OpenEdit
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-try-restore">
+                  <Link href="/restore-ai" prefetch>
+                    Try RestoreAI
                   </Link>
                 </Button>
               </>
@@ -136,7 +146,7 @@ export default function LandingContent() {
         <section className="mt-40 text-center" aria-labelledby="cta-end-heading">
           <h2 id="cta-end-heading" className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Ready to Experiment?</h2>
           <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-            Jump straight into virtual try-ons, or try OpenEdit for natural language editing.
+            Jump straight into virtual try-ons, restore old photos, or try OpenEdit for natural language editing.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button asChild size="lg" data-testid="cta-bottom-primary">
@@ -144,6 +154,9 @@ export default function LandingContent() {
             </Button>
             <Button variant="outline" asChild size="lg" data-testid="cta-bottom-secondary">
               <Link href="/free-edit" prefetch>OpenEdit</Link>
+            </Button>
+            <Button variant="outline" asChild size="lg" data-testid="cta-bottom-tertiary">
+              <Link href="/restore-ai" prefetch>RestoreAI</Link>
             </Button>
           </div>
         </section>

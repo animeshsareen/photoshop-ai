@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Image, LogOut, LogIn, Shirt, Paintbrush, Video } from "lucide-react"
+import { Image, LogOut, LogIn, Shirt, Paintbrush, Video, RefreshCw } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -70,6 +70,12 @@ export default function Navigation() {
               <Link href="/thumbnail-studio" prefetch>
                 <Video className="h-4 w-4 mr-1" />
                 Thumbnail Studio
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="px-2" aria-label="RestoreAI">
+              <Link href="/restore-ai" prefetch>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                RestoreAI
               </Link>
             </Button>
           </div>
