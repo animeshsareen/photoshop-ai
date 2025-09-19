@@ -2,10 +2,34 @@
 
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw } from "lucide-react"
+import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
+
+// Custom BroomIcon for DeClutter
+const BroomIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    {/* handle */}
+    <path d="M14 3l7 7" />
+    {/* ferrule */}
+    <path d="M12.5 6.5l5 5" />
+    {/* broom head */}
+    <path d="M3 21c1-3 4-6 7-7l4 4c-1 3-4 6-7 7" />
+    {/* bristles */}
+    <path d="M9 18l3 3" />
+    <path d="M7 19l2 2" />
+  </svg>
+)
 
 // Marketing feature list (kept local for quick iteration)
 const FEATURES = [
@@ -43,47 +67,48 @@ export default function LandingContent() {
           <h1 id="hero-heading" className="text-balance text-5xl md:text-6xl font-bold tracking-tight">
             Try your clothes <span className="text-primary">with AI</span>
           </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg md:text-l text-muted-foreground max-w-2xl mx-auto">
             Virtual try‑ons, clothing search, photo restoration, and a freeform image editor.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center pt-2" aria-label="Primary actions">
+          <div className="flex flex-col items-center gap-6 pt-2" aria-label="Primary actions">
+            {/* Primary Get Started button */}
             {isAuthed ? (
-              <>
-                <Button asChild size="lg" className="px-8" data-testid="cta-go-to-app">
-                  <Link href="/app" prefetch>
-                    <Shirt className="h-5 w-5 mr-2" /> Get Started
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-free-edit">
-                  <Link href="/free-edit" prefetch>
-                    <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-restore-ai">
-                  <Link href="/restore-ai" prefetch>
-                    <RefreshCw className="h-5 w-5 mr-2" /> RestoreAI
-                  </Link>
-                </Button>
-              </>
+              <Button asChild size="lg" className="px-8" data-testid="cta-go-to-app">
+                <Link href="/app" prefetch>
+                  <Shirt className="h-5 w-5 mr-2" /> Get Started
+                </Link>
+              </Button>
             ) : (
-              <>
-                <Button asChild size="lg" className="px-8" data-testid="cta-get-started">
-                  <Link href="/auth/signin">
-                    Get Started
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-try-editor">
-                  <Link href="/free-edit" prefetch>
-                    Try OpenEdit
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild size="lg" className="px-8" data-testid="cta-try-restore">
-                  <Link href="/restore-ai" prefetch>
-                    Try RestoreAI
-                  </Link>
-                </Button>
-              </>
+              <Button asChild size="lg" className="px-8" data-testid="cta-get-started">
+                <Link href="/auth/signin">
+                  Get Started
+                </Link>
+              </Button>
             )}
+            
+            {/* 4 tool buttons in a 2x2 grid */}
+            <div className="grid grid-cols-2 gap-3 max-w-md">
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-free-edit">
+                <Link href="/free-edit" prefetch>
+                  <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-restore-ai">
+                <Link href="/restore-ai" prefetch>
+                  <RefreshCw className="h-5 w-5 mr-2" /> RestoreAI
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-declutter">
+                <Link href="/declutter" prefetch>
+                  <BroomIcon className="h-5 w-5 mr-2" /> DeClutter
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-thumbnail-studio">
+                <Link href="/thumbnail-studio" prefetch>
+                  <Video className="h-5 w-5 mr-2" /> ThumbnailStudio
+                </Link>
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground flex items-center justify-center gap-1" aria-live="polite">
             <Coins className="h-3.5 w-3.5 text-primary" /> Includes {DEFAULT_FREE_CREDITS} free credits on first sign‑in.
@@ -96,7 +121,7 @@ export default function LandingContent() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map(f => (
               <Card key={f.title} className="relative overflow-hidden group">
-                <CardHeader className="pb-4">
+                <CardHeader className="pb-2">
                   <div className="flex items-center gap-3">
                     <div className="rounded-md bg-primary/10 p-2 ring-1 ring-primary/15 group-hover:ring-primary/40 transition-colors">
                       {f.icon}
@@ -157,6 +182,12 @@ export default function LandingContent() {
             </Button>
             <Button variant="outline" asChild size="lg" data-testid="cta-bottom-tertiary">
               <Link href="/restore-ai" prefetch>RestoreAI</Link>
+            </Button>
+            <Button variant="outline" asChild size="lg" data-testid="cta-bottom-declutter">
+              <Link href="/declutter" prefetch>DeClutter</Link>
+            </Button>
+            <Button variant="outline" asChild size="lg" data-testid="cta-bottom-thumbnail-studio">
+              <Link href="/thumbnail-studio" prefetch>ThumbnailStudio</Link>
             </Button>
           </div>
         </section>
