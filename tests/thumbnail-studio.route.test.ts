@@ -85,7 +85,7 @@ vi.mock('sharp', () => ({
 // Set environment variables
 process.env.GEMINI_API_KEY = 'test_gemini_key'
 
-describe('Thumbnail Studio API', () => {
+describe('ThumbnailStudio API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset Supabase mocks
