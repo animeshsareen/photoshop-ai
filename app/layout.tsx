@@ -7,21 +7,6 @@ import { ThemeProvider } from '@/components/theme-provider'
 import Navigation from '@/components/navigation'
 import './globals.css'
 
-export const metadata: Metadata = {
-  title: 'PhotoshopAI',
-  description: 'AI photo editing & virtual try-on',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico' },
-    ],
-    shortcut: ['/favicon.ico'],
-    apple: [
-      { url: '/apple-touch-icon.png' },
-    ],
-  },
-}
 
 // Fonts must be instantiated at module scope
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })

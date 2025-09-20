@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+  <defs>
+    <mask id="lens-cut">
+      <rect width="64" height="64" fill="#fff" />
+      <circle cx="32" cy="34" r="10" fill="#000" />
+    </mask>
+  </defs>
+  <g fill="#0B0B0B" mask="url(#lens-cut)">
+    <rect x="16" y="12" width="16" height="10" rx="3" />
+    <rect x="8" y="18" width="48" height="32" rx="6" />
+  </g>
+  <circle cx="48" cy="26" r="2" fill="#0B0B0B" />
+</svg>
