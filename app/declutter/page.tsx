@@ -123,7 +123,7 @@ function DeClutterContent() {
         <div className="flex items-center justify-between mb-8">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">DeClutter</h1>
-            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}!</p>
+            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}</p>
             <p className="text-muted-forefround text-lg text-pretty">Remove background noise and distractions from a single photo.</p>
           </div>
           <UserProfile />

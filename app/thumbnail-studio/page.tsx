@@ -254,7 +254,7 @@ function ThumbnailStudioContent() {
         <div className="flex items-center justify-between mb-8">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">ThumbnailStudio</h1>
-            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}!</p>
+            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}</p>
             <p className="text-muted-foreground text-lg text-pretty">Create eye-catching YouTube thumbnails from your images.</p>
           </div>
           <UserProfile />

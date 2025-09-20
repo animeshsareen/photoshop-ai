@@ -133,7 +133,7 @@ function RestoreAIContent() {
         <div className="flex items-center justify-between mb-8">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">RestoreAI</h1>
-            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}!</p>
+            <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}</p>
             <p className="text-muted-foreground text-lg text-pretty">Restore old, damaged, or low-quality photos with AI-powered restoration.</p>
           </div>
           <UserProfile />

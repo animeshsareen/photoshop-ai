@@ -316,7 +316,7 @@ function PhotoEditorContent() {
             <div className="text-center flex-1">
               <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">TryMyClothes</h1>
               <p className="text-muted-foreground text-lg text-pretty">
-                Welcome back, {user?.name}!
+                Welcome back, {user?.name}
               </p>
               <p className="text-muted-foreground text-lg text-pretty">
                 Upload your photo and a clothing item to try it on.
