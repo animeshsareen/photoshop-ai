@@ -237,7 +237,8 @@ export async function GET(req: NextRequest) {
 	if (!apiKey) return NextResponse.json({ error: 'SERPAPI_KEY not configured' }, { status: 500 })
 
 	const url = new URL('https://serpapi.com/search.json')
-	url.searchParams.set('engine','google_images')
+	url.searchParams.set('engine','google')
+	url.searchParams.set('tbm','shop')
 	url.searchParams.set('q', enriched)
 	url.searchParams.set('api_key', apiKey)
 

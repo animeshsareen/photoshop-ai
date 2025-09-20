@@ -36,6 +36,28 @@ interface EditedImage {
   data: string
 }
 
+const normalizeResultUrl = (rawUrl?: string | null) => {
+  if (!rawUrl) return null
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  if (trimmed.startsWith('//')) return `https:${trimmed}`
+  if (/^www\./i.test(trimmed)) return `https://${trimmed}`
+  try {
+    const direct = new URL(trimmed)
+    if (/^https?:$/i.test(direct.protocol)) return direct.href
+  } catch (error) {
+    /* fall through to prefix strategy */
+  }
+  try {
+    const prefixed = new URL(`https://${trimmed}`)
+    if (/^https?:$/i.test(prefixed.protocol)) return prefixed.href
+  } catch (error) {
+    /* give up */
+  }
+  return null
+}
+
 function PhotoEditorContent() {
   const { user } = useAuth()
   // Separate single-image slots for virtual try-on
@@ -59,7 +81,7 @@ function PhotoEditorContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string }>>([])
+  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string; price?: string | number; highResImage?: string }>>([])
   const [importingIndex, setImportingIndex] = useState<number | null>(null)
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -399,13 +421,43 @@ function PhotoEditorContent() {
                     {searchError && <p className="text-xs text-destructive">{searchError}</p>}
                     {results.length > 0 && (
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        {results.map((r,i)=>(
-                          <button key={i} type="button" onClick={()=>selectRemoteImage((r as any).highResImage || r.image, r.title, i)} disabled={importingIndex !== null} className="group relative border rounded-lg overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={r.image} alt={r.title} className="w-full h-28 object-cover group-hover:scale-105 transition-transform" />
-                            <div className={`absolute inset-0 flex items-center justify-center text-white text-xs transition-opacity ${importingIndex===i ? 'bg-black/60 opacity-100' : 'bg-black/40 opacity-0 group-hover:opacity-100'}`}>{importingIndex===i ? 'Importing...' : 'Use'}</div>
-                          </button>
-                        ))}
+                        {results.map((r,i)=>{
+                          const productUrl = normalizeResultUrl((r as any).url)
+                          const href = productUrl || `https://www.google.com/search?q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
+                          return (
+                            <div key={i} className="relative border rounded-lg overflow-hidden bg-muted group">
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block focus:outline-none focus:ring-2 focus:ring-primary"
+                                aria-label={r.title}
+                                title={r.title}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={(r as any).image} alt={r.title} className="w-full h-28 object-cover transition-transform group-hover:scale-105" />
+                                {/* Darken image on hover only */}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
+                                {/* Brand and price stacked at bottom on hover */}
+                                <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="bg-black/60 text-white text-[11px] leading-snug rounded px-2 py-1">
+                                    <div className="truncate">{r.brand || 'Brand'}</div>
+                                    <div className="font-semibold">{typeof r.price === 'number' ? `$${r.price}` : (r.price || '')}</div>
+                                  </div>
+                                </div>
+                              </a>
+                              {/* Use button to import image without visiting link */}
+                              <button
+                                type="button"
+                                onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) }}
+                                disabled={importingIndex !== null}
+                                className="absolute top-1 right-1 z-10 text-[10px] px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                {importingIndex===i ? 'Importing…' : 'Use'}
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                     {!isSearching && results.length === 0 && (searchQuery.trim() ? <p className="text-xs text-muted-foreground">No matches. Refine with a color & category.</p> : <p className="text-xs text-muted-foreground">Describe a garment to search real product photos.</p>)}
