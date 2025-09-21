@@ -210,6 +210,7 @@ interface SerpShoppingResult {
 	title?: string
 	thumbnail?: string
 	link?: string
+	product_link?: string
 	source?: string
 	position?: number
 	price?: string
@@ -335,6 +336,7 @@ export async function GET(req: NextRequest) {
 				image: r.thumbnail,
 				highResImage: highResFromOriginal || highResHeuristic || r.thumbnail,
 				url: r.link,
+				productLink: (r as any).product_link,
 				brand: r.source,
 				position: r.position,
 				price,

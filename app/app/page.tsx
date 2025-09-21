@@ -58,6 +58,13 @@ const normalizeResultUrl = (rawUrl?: string | null) => {
   return null
 }
 
+const buildFirstOrganicSearchUrl = (queryParts: Array<string | undefined | null>) => {
+  const query = queryParts.filter(Boolean).join(' ').trim()
+  if (!query) return null
+  const encoded = encodeURIComponent(query)
+  return `https://www.google.com/search?btnI=I&q=${encoded}`
+}
+
 function PhotoEditorContent() {
   const { user } = useAuth()
   // Separate single-image slots for virtual try-on
@@ -81,8 +88,9 @@ function PhotoEditorContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string; price?: string | number; highResImage?: string }>>([])
+  const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string; price?: string | number; highResImage?: string; productLink?: string }>>([])
   const [importingIndex, setImportingIndex] = useState<number | null>(null)
+  const [isShowingOriginal, setIsShowingOriginal] = useState(false)
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -178,6 +186,7 @@ function PhotoEditorContent() {
           if (slot === 'you') setYouImage(newImage)
           else setClothingImage(newImage)
           setEditedImage(null)
+          setIsShowingOriginal(false)
           resolve()
         }
         reader.readAsDataURL(result.compressedFile || theFile)
@@ -202,8 +211,19 @@ function PhotoEditorContent() {
     if (f) await processSingleFile(f, slot)
   }
 
-  const removeImage = (slot: 'you' | 'clothing') => { if (slot === 'you') setYouImage(null); else setClothingImage(null); setEditedImage(null) }
-  const clearAllImages = () => { setYouImage(null); setClothingImage(null); setEditedImage(null); setUploadError(null) }
+  const removeImage = (slot: 'you' | 'clothing') => {
+    if (slot === 'you') setYouImage(null)
+    else setClothingImage(null)
+    setEditedImage(null)
+    setIsShowingOriginal(false)
+  }
+  const clearAllImages = () => {
+    setYouImage(null)
+    setClothingImage(null)
+    setEditedImage(null)
+    setUploadError(null)
+    setIsShowingOriginal(false)
+  }
 
   const handlePurchaseCredits = async () => {
     setIsProcessingPayment(true)
@@ -251,7 +271,7 @@ function PhotoEditorContent() {
         const errorData = await apiResponse.json().catch(()=>({}))
         throw new Error(errorData?.error || `Failed: ${apiResponse.status}`)
       }
-      const result = await apiResponse.json(); setEditedImage(result.editedImageUrl)
+      const result = await apiResponse.json(); setEditedImage(result.editedImageUrl); setIsShowingOriginal(false)
       // Refresh server credits
       try { const r = await fetch('/api/credits', { cache: 'no-store' }); if (r.ok) { const k = await r.json(); if (typeof k.credits === 'number') setCredits(k.credits) } } catch {}
       window.dispatchEvent(new Event("creditsUpdated"))
@@ -269,6 +289,8 @@ function PhotoEditorContent() {
 
   const downloadEditedImage = () => { if (!editedImage) return; const link = document.createElement('a'); link.href = editedImage; link.download = 'ai-edited-image.png'; document.body.appendChild(link); link.click(); document.body.removeChild(link) }
   const getTotalSize = () => { const sizes = [youImage, clothingImage].filter(Boolean).map(img => (img as SelectedImage).compressedSize || (img as SelectedImage).originalSize); return sizes.reduce((a,b)=>a+b,0) }
+  const canShowBeforeAfter = Boolean(editedImage && youImage)
+  const resultImageSrc = canShowBeforeAfter && isShowingOriginal && youImage ? youImage.data : editedImage
 
   // Estimate generation duration (seconds) based on combined input size.
   // Previous heuristic was conservative (8s + 3s/MB, min 6, max 60) which made the timer feel slow.
@@ -422,8 +444,11 @@ function PhotoEditorContent() {
                     {results.length > 0 && (
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         {results.map((r,i)=>{
-                          const productUrl = normalizeResultUrl((r as any).url)
-                          const href = productUrl || `https://www.google.com/search?q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
+                          const productUrl = normalizeResultUrl((r as any).productLink || (r as any).product_link)
+                          const directUrl = normalizeResultUrl((r as any).url)
+                          const organicSearchUrl = buildFirstOrganicSearchUrl([r.title, (r as any).brand])
+                          const fallbackGoogle = `https://www.google.com/search?q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
+                          const href = productUrl || directUrl || organicSearchUrl || fallbackGoogle
                           return (
                             <div key={i} className="relative border rounded-lg overflow-hidden bg-muted group">
                               <a
@@ -491,7 +516,16 @@ function PhotoEditorContent() {
                     <h3 className="text-lg font-semibold text-foreground mb-4 text-center">Result</h3>
                     <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
                       {editedImage ? (
-                        <Image src={editedImage} alt="AI edited image" fill className="object-cover" />
+                        resultImageSrc ? (
+                          <>
+                            <Image src={resultImageSrc} alt={isShowingOriginal ? 'Original photo preview' : 'AI edited image'} fill className="object-cover" />
+                            {canShowBeforeAfter && (
+                              <div className="absolute top-3 left-3 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
+                                {isShowingOriginal ? 'Before' : 'After'}
+                              </div>
+                            )}
+                          </>
+                        ) : null
                       ) : isProcessing ? (
                         <div className="flex flex-col items-center gap-3 w-full px-8">
                           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -505,7 +539,12 @@ function PhotoEditorContent() {
                       )}
                     </div>
                     {editedImage && (
-                      <div className="mt-4 flex justify-center">
+                      <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+                        {youImage && (
+                          <Button onClick={() => setIsShowingOriginal(!isShowingOriginal)} variant="secondary" size="sm">
+                            {isShowingOriginal ? 'Show Try-On' : 'Undo Try-On'}
+                          </Button>
+                        )}
                         <Button onClick={downloadEditedImage} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Download</Button>
                       </div>
                     )}

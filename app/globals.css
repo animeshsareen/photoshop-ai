@@ -29,7 +29,8 @@
   --chart-3: oklch(0.63 0.15 235); /* Primary baby blue for charts */
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.82 0.06 235); /* Accent baby blue for charts */
-  --radius: 0.375rem; /* Smaller radius for minimalist look */
+  /* Adopt larger radius from legacy styles for consistency with theme tokens */
+  --radius: 0.625rem;
   --sidebar: oklch(0.98 0.01 235); /* Light baby blue sidebar */
   --sidebar-foreground: oklch(0.25 0 0); /* Dark gray sidebar text */
   --sidebar-primary: oklch(0.63 0.15 235); /* Baby blue sidebar primary */
