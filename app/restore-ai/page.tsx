@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Upload, RefreshCw, Download, Loader2, X, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
-import { CreditDisplay } from '@/components/credit-display'
 import UserProfile from '@/components/user-profile'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/hooks/use-auth'
@@ -139,7 +138,6 @@ function RestoreAIContent() {
           <UserProfile />
         </div>
         <div className="space-y-8">
-          <CreditDisplay onPurchaseCredits={async ()=>{ setIsProcessingPayment(true); try { const res = await fetch('/api/checkout', { method: 'POST' }); const data = await res.json().catch(()=>null as any); if (!res.ok) throw new Error((data as any)?.error || (data as any)?.code || `HTTP ${res.status}`); if (data?.url) { window.location.href = data.url } else { throw new Error('No checkout URL returned') } } catch (e) { alert(e instanceof Error ? e.message : 'Unable to start checkout') } finally { setIsProcessingPayment(false) } }} />
           <div className="grid lg:grid-cols-2 gap-8 items-start">
             <div className="space-y-6">
               {uploadError && (
@@ -352,5 +350,3 @@ export default function RestoreAIPage() {
     </ProtectedRoute>
   )
 }
-
-

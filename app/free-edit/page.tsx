@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from 'lucide-react'
 import Image from 'next/image'
-import { CreditDisplay } from '@/components/credit-display'
 import UserProfile from '@/components/user-profile'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/hooks/use-auth'
@@ -31,7 +30,6 @@ function FreeEditContent() {
   const [prompt, setPrompt] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [credits, setCredits] = useState(0)
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
   const [generationStartTime, setGenerationStartTime] = useState<number | null>(null)
@@ -105,16 +103,7 @@ function FreeEditContent() {
     setPrompt("") // also clear prompt when all images removed
   }
 
-  const handlePurchaseCredits = async () => {
-    setIsProcessingPayment(true)
-    try {
-      const res = await fetch('/api/checkout', { method: 'POST' })
-      let data: any = null; try { data = await res.json() } catch {}
-      if (!res.ok) { const msg = data?.error || data?.code || `HTTP ${res.status}`; throw new Error(msg) }
-      if (data?.url) { window.location.href = data.url; return }
-      throw new Error('No checkout URL returned')
-    } catch (e) { alert(e instanceof Error ? e.message : 'Unable to start checkout') } finally { setIsProcessingPayment(false) }
-  }
+  // Purchasing handled globally via navbar credit badge
 
   const getTotalSize = () => images.reduce((acc, img) => acc + (img.compressedSize || img.originalSize), 0)
   const estimateGenerationDuration = (totalBytes: number) => { if (!totalBytes) return 5; const mb = totalBytes / (1024*1024); const base=5; const perMb=1.6; let est=base+mb*perMb; if (mb<0.5) est=base; return Math.min(45, Math.max(4, est)) }
@@ -178,7 +167,6 @@ function FreeEditContent() {
           <UserProfile />
         </div>
         <div className="space-y-8">
-          <CreditDisplay onPurchaseCredits={handlePurchaseCredits} />
           <div className="grid lg:grid-cols-2 gap-8 items-start">
             {/* Left column: Inputs & generate button */}
             <div className="space-y-6">
