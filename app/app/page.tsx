@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Slider } from "@/components/ui/slider"
 // Textarea removed for virtual try-on flow
 import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from "lucide-react"
 import Image from "next/image"
@@ -91,6 +92,9 @@ function PhotoEditorContent() {
   const [results, setResults] = useState<Array<{ title: string; image: string; url: string; brand?: string; price?: string | number; highResImage?: string; productLink?: string }>>([])
   const [importingIndex, setImportingIndex] = useState<number | null>(null)
   const [isShowingOriginal, setIsShowingOriginal] = useState(false)
+  const [gender, setGender] = useState<'men' | 'women'>('men')
+  // Price range [min, max]
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 300])
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -98,7 +102,14 @@ function PhotoEditorContent() {
     setIsSearching(true)
     setSearchError(null)
     try {
-      const res = await fetch(`/api/search-clothing?q=${encodeURIComponent(searchQuery)}`)
+      const params = new URLSearchParams({ q: searchQuery })
+      if (gender) params.set('gender', gender)
+      if (priceRange && Array.isArray(priceRange)) {
+        const [minP, maxP] = priceRange
+        if (typeof minP === 'number') params.set('min_price', String(Math.max(0, Math.floor(minP))))
+        if (typeof maxP === 'number') params.set('max_price', String(Math.max(0, Math.floor(maxP))))
+      }
+      const res = await fetch(`/api/search-clothing?${params.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`)
       setResults(data.items || [])
@@ -436,50 +447,99 @@ function PhotoEditorContent() {
                 <Card className="border-border">
                   <CardContent className="p-5 space-y-4">
                     <h4 className="text-md font-semibold">Find Clothing</h4>
-                    <form onSubmit={handleSearch} className="flex gap-2">
+                    <form onSubmit={handleSearch} className="flex gap-2 items-center">
+                      <select
+                        value={gender}
+                        onChange={(e)=>setGender(e.target.value as 'men'|'women')}
+                        className="px-2 py-2 rounded-md border bg-background text-sm"
+                        aria-label="Gender"
+                      >
+                        <option value="men">Men</option>
+                        <option value="women">Women</option>
+                      </select>
                       <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="slim-fit black turtleneck sweater" className="flex-1 px-3 py-2 rounded-md border bg-background text-sm" />
                       <Button type="submit" disabled={!searchQuery.trim() || isSearching} variant="secondary">{isSearching ? (<><Loader2 className="h-4 w-4 animate-spin mr-2"/>Searching</>) : 'Search'}</Button>
                     </form>
+                    {/* Price range slider */}
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">Price range</div>
+                      <div className="relative pb-8">
+                        <Slider
+                          min={0}
+                          max={1000}
+                          step={5}
+                          value={priceRange}
+                          onValueChange={(val: number[]) => {
+                            if (Array.isArray(val) && val.length === 2) {
+                              const [lo, hi] = val as [number, number]
+                              setPriceRange([Math.min(lo, hi), Math.max(lo, hi)])
+                            }
+                          }}
+                        />
+                        {(() => {
+                          const [lo, hi] = priceRange
+                          const min = 0, max = 1000
+                          const pct = (v: number) => ((v - min) / (max - min)) * 100
+                          return (
+                            <>
+                              <span
+                                className="pointer-events-none absolute top-5 -translate-x-1/2 text-[11px] rounded bg-muted px-1.5 py-0.5 text-foreground shadow"
+                                style={{ left: `${pct(lo)}%` }}
+                              >
+                                ${lo}
+                              </span>
+                              <span
+                                className="pointer-events-none absolute top-5 -translate-x-1/2 text-[11px] rounded bg-muted px-1.5 py-0.5 text-foreground shadow"
+                                style={{ left: `${pct(hi)}%` }}
+                              >
+                                ${hi}
+                              </span>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    </div>
                     {searchError && <p className="text-xs text-destructive">{searchError}</p>}
                     {results.length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {results.map((r,i)=>{
-                          const productUrl = normalizeResultUrl((r as any).productLink || (r as any).product_link)
-                          const directUrl = normalizeResultUrl((r as any).url)
-                          const organicSearchUrl = buildFirstOrganicSearchUrl([r.title, (r as any).brand])
-                          const fallbackGoogle = `https://www.google.com/search?q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
-                          const href = productUrl || directUrl || organicSearchUrl || fallbackGoogle
                           return (
-                            <div key={i} className="relative border rounded-lg overflow-hidden bg-muted group">
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block focus:outline-none focus:ring-2 focus:ring-primary"
-                                aria-label={r.title}
-                                title={r.title}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={(r as any).image} alt={r.title} className="w-full h-28 object-cover transition-transform group-hover:scale-105" />
-                                {/* Darken image on hover only */}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
-                                {/* Brand and price stacked at bottom on hover */}
-                                <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <div className="bg-black/60 text-white text-[11px] leading-snug rounded px-2 py-1">
-                                    <div className="truncate">{r.brand || 'Brand'}</div>
-                                    <div className="font-semibold">{typeof r.price === 'number' ? `$${r.price}` : (r.price || '')}</div>
-                                  </div>
+                            <div
+                              key={i}
+                              className="relative border rounded-lg overflow-hidden bg-muted group cursor-pointer"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={r.title}
+                              title={r.title}
+                              onClick={(e)=>{ e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) }}
+                              onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) } }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={(r as any).image} alt={r.title} className="w-full h-40 md:h-56 object-cover transition-transform group-hover:scale-105" />
+                              {/* Darken image on hover only */}
+                              <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
+                              {/* Brand and price stacked at bottom on hover */}
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="bg-black/60 text-white text-[11px] leading-snug rounded px-2 py-1">
+                                  <div className="truncate">{r.brand || 'Brand'}</div>
+                                  <div className="font-semibold">{typeof r.price === 'number' ? `$${r.price}` : (r.price || '')}</div>
                                 </div>
-                              </a>
-                              {/* Use button to import image without visiting link */}
-                              <button
-                                type="button"
-                                onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) }}
-                                disabled={importingIndex !== null}
-                                className="absolute top-1 right-1 z-10 text-[10px] px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                {importingIndex===i ? 'Importing…' : 'Use'}
-                              </button>
+                              </div>
+                              {/* Shop button opens Google Shopping */}
+                              {(() => {
+                                const shoppingUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
+                                return (
+                                  <a
+                                    href={shoppingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e)=>{ e.stopPropagation() }}
+                                    className="absolute top-1 right-1 z-10 text-[10px] px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    {importingIndex===i ? 'Importing…' : 'Shop'}
+                                  </a>
+                                )
+                              })()}
                             </div>
                           )
                         })}

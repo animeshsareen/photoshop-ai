@@ -223,6 +223,12 @@ interface SerpShoppingResult {
 export async function GET(req: NextRequest) {
 	const { searchParams } = new URL(req.url)
 	const q = (searchParams.get('q') || '').trim()
+	const genderParam = (searchParams.get('gender') || '').toLowerCase()
+	const genderPref: 'men' | 'women' | null = genderParam === 'men' ? 'men' : genderParam === 'women' ? 'women' : null
+	const minPriceParam = searchParams.get('min_price')
+	const maxPriceParam = searchParams.get('max_price')
+	const minPrice = minPriceParam ? Math.max(0, parseFloat(minPriceParam)) : null
+	const maxPrice = maxPriceParam ? Math.max(0, parseFloat(maxPriceParam)) : null
 	if (!q) return NextResponse.json({ error: 'Missing q param' }, { status: 400 })
 
 	const parsed = parseQuery(q)
@@ -231,7 +237,8 @@ export async function GET(req: NextRequest) {
 	const styleToken = rawTokens.find(t => STYLE_ADJECTIVES.includes(t))
 	const genderToken = rawTokens.find(t => GENDER_TERMS.includes(t))
 	const sizeToken = rawTokens.find(t => SIZE_TERMS.includes(t))
-	const queryParts = [parsed.color, parsed.fit, parsed.category, styleToken, genderToken, sizeToken, q, 'apparel clothing garment']
+	const genderQueryToken = genderPref ? (genderPref === 'men' ? "men's" : "women's") : undefined
+	const queryParts = [genderQueryToken, parsed.color, parsed.fit, parsed.category, styleToken, genderToken, sizeToken, q, 'apparel clothing garment']
 	const enriched = queryParts.filter(Boolean).join(' ') + ' lay-flat flat-lay'
 
 	const apiKey = process.env.SERPAPI_KEY
@@ -242,6 +249,9 @@ export async function GET(req: NextRequest) {
 	url.searchParams.set('tbm','shop')
 	url.searchParams.set('q', enriched)
 	url.searchParams.set('api_key', apiKey)
+	// Try passing through price hints (SerpApi may ignore if unsupported)
+	if (minPrice != null) url.searchParams.set('price_low', String(Math.floor(minPrice)))
+	if (maxPrice != null) url.searchParams.set('price_high', String(Math.floor(maxPrice)))
 
 	try {
 		const resp = await fetch(url.toString(), { headers: { 'User-Agent': 'virtual-try-on/1.0' } })
@@ -277,10 +287,29 @@ export async function GET(req: NextRequest) {
 		// Second pass: fuzzy dedupe by normalized title similarity
 		const deduped = fuzzyDeduplicate(exact)
 
+	// Gender hinting & filtering
+	function titleImpliesGender(title?: string): 'men' | 'women' | null {
+		if (!title) return null
+		const t = title.toLowerCase()
+		const isMen = /(\bmen'?s\b|\bmens\b|\bmen\b)/i.test(t)
+		const isWomen = /(\bwomen'?s\b|\bwomens\b|\bwomen\b|\bladies\b)/i.test(t)
+		if (isMen && !isWomen) return 'men'
+		if (isWomen && !isMen) return 'women'
+		return null
+	}
+
+	// Apply optional gender filter before clothing filter
+	let genderScoped = deduped
+	if (genderPref) {
+		const g = deduped.filter(r => titleImpliesGender(r.title) === genderPref)
+		// if strict gender filter is too aggressive, keep original set but rely on enriched query
+		if (g.length >= 6) genderScoped = g
+	}
+
 	// Apply guardrail clothing filter
-	const clothingOnly = deduped.filter(r => isClothingTitle(r.title))
+	const clothingOnly = genderScoped.filter(r => isClothingTitle(r.title))
 	// Fallback: if guardrail removes everything (overly strict) relax to previous heuristic but still block obvious non-clothing
-	const baselineFiltered = deduped.filter(r => r.thumbnail && r.title && !BLOCKED_KEYWORDS.some(b => (r.title||'').toLowerCase().includes(b)))
+	const baselineFiltered = genderScoped.filter(r => r.thumbnail && r.title && !BLOCKED_KEYWORDS.some(b => (r.title||'').toLowerCase().includes(b)))
 	const finalSet = (clothingOnly.length >= 4 ? clothingOnly : baselineFiltered).slice(0, 40) // allow a few more before brand/price guardrails
 
 		// Brand/source blacklist (e.g., stock image providers we don't want to surface as apparel products)
@@ -306,6 +335,17 @@ export async function GET(req: NextRequest) {
 			const highResFromOriginal = (r as any).original || (r as any).original_image || null
 			const highResHeuristic = upgradeUrl(highResFromOriginal || r.thumbnail)
 			let price: any = (r as any).price ?? (r as any).extracted_price
+			// Normalize numeric price if possible for range filtering
+			let numericPrice: number | undefined
+			if (typeof price === 'number') {
+				numericPrice = price
+			} else if (typeof price === 'string') {
+				const match = price.replace(/[,\s]/g, '').match(/([0-9]+(?:\.[0-9]+)?)/)
+				if (match) {
+					const n = parseFloat(match[1])
+					if (!isNaN(n)) numericPrice = n
+				}
+			}
 			// Extract rating / reviews if present (SerpApi often supplies rating & reviews fields)
 			let rating: number | undefined = (r as any).rating
 			let reviews: number | undefined = (r as any).reviews
@@ -340,6 +380,7 @@ export async function GET(req: NextRequest) {
 				brand: r.source,
 				position: r.position,
 				price,
+				numericPrice,
 				rating,
 				reviews,
 				_score: computeScore(rating, reviews),
@@ -347,12 +388,23 @@ export async function GET(req: NextRequest) {
 			}
 		})
 
+		// Optional price range filtering when provided
+		let priceScoped = mapped
+		if (minPrice != null || maxPrice != null) {
+			priceScoped = mapped.filter(item => {
+				if (item.numericPrice == null) return false // exclude unknown when filtering
+				if (minPrice != null && item.numericPrice < minPrice) return false
+				if (maxPrice != null && item.numericPrice > maxPrice) return false
+				return true
+			})
+		}
+
 		// Brand uniqueness + relevance ranking:
 		// 1. For each brand keep the highest scoring item (score = reviews * rating)
 		// 2. Sort remaining items by score desc, then fallback to (reviews desc, rating desc, position asc)
 		// 3. Take top 10
 		const brandBest = new Map<string, typeof mapped[number]>()
-		for (const item of mapped) {
+		for (const item of priceScoped) {
 			const key = (item.brand || '').toLowerCase()
 			const existing = brandBest.get(key)
 			if (!existing) {
@@ -398,7 +450,7 @@ export async function GET(req: NextRequest) {
 			rawShoppingCount: json.shopping_results ? json.shopping_results.length : 0,
 			rawImagesCount: Array.isArray(json.images_results) ? json.images_results.length : 0,
 			count: brandUniqueItems.length,
-			items: brandUniqueItems.map(({ _score, ...rest }) => rest) // strip internal _score
+			items: brandUniqueItems.map(({ _score, numericPrice, ...rest }) => rest) // strip internal fields
 		})
 	} catch (e: any) {
 		return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 })
