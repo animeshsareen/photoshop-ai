@@ -8,6 +8,7 @@ import Link from "next/link"
 import { signOut } from "next-auth/react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
+import CreditBadge from "@/components/credit-badge"
 
 export default function Navigation() {
   const { user, status } = useAuth(false) // don't auto redirect on nav
@@ -130,6 +131,10 @@ export default function Navigation() {
                 </div>
               </div>
             </div>
+            {/* Credits badge next to Explore */}
+            {status === 'authenticated' && (
+              <CreditBadge size="md" />
+            )}
           </div>
 
           <div className="flex items-center space-x-2">

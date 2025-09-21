@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider"
 // Textarea removed for virtual try-on flow
 import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from "lucide-react"
 import Image from "next/image"
-import { CreditDisplay } from "@/components/credit-display"
+// Credit badge is now shown in the top navigation
 import UserProfile from "@/components/user-profile"
 import ProtectedRoute from "@/components/protected-route"
 import { useAuth } from "@/hooks/use-auth"
@@ -94,18 +94,20 @@ function PhotoEditorContent() {
   const [isShowingOriginal, setIsShowingOriginal] = useState(false)
   const [gender, setGender] = useState<'men' | 'women'>('men')
   // Price range [min, max]
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 300])
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 250])
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!searchQuery.trim()) return
+  const performSearch = async (opts?: { gender?: 'men' | 'women'; priceRange?: [number, number] }) => {
+    const q = searchQuery.trim()
+    if (!q) return
+    const g = opts?.gender ?? gender
+    const pr = opts?.priceRange ?? priceRange
     setIsSearching(true)
     setSearchError(null)
     try {
-      const params = new URLSearchParams({ q: searchQuery })
-      if (gender) params.set('gender', gender)
-      if (priceRange && Array.isArray(priceRange)) {
-        const [minP, maxP] = priceRange
+      const params = new URLSearchParams({ q })
+      if (g) params.set('gender', g)
+      if (pr && Array.isArray(pr)) {
+        const [minP, maxP] = pr
         if (typeof minP === 'number') params.set('min_price', String(Math.max(0, Math.floor(minP))))
         if (typeof maxP === 'number') params.set('max_price', String(Math.max(0, Math.floor(maxP))))
       }
@@ -118,6 +120,11 @@ function PhotoEditorContent() {
     } finally {
       setIsSearching(false)
     }
+  }
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await performSearch()
   }
 
   const selectRemoteImage = async (imgUrl: string, title: string, index: number) => {
@@ -358,7 +365,6 @@ function PhotoEditorContent() {
             <UserProfile />
           </div>
           <div className="space-y-8">
-            <CreditDisplay onPurchaseCredits={handlePurchaseCredits} />
             <div className="grid lg:grid-cols-2 gap-8 items-start">
               <div className="space-y-6">
                 {uploadError && (
@@ -450,7 +456,12 @@ function PhotoEditorContent() {
                     <form onSubmit={handleSearch} className="flex gap-2 items-center">
                       <select
                         value={gender}
-                        onChange={(e)=>setGender(e.target.value as 'men'|'women')}
+                        onChange={(e)=>{
+                          const g = e.target.value as 'men'|'women'
+                          setGender(g)
+                          // Auto-refresh results when gender changes
+                          void performSearch({ gender: g })
+                        }}
                         className="px-2 py-2 rounded-md border bg-background text-sm"
                         aria-label="Gender"
                       >
@@ -466,7 +477,7 @@ function PhotoEditorContent() {
                       <div className="relative pb-8">
                         <Slider
                           min={0}
-                          max={1000}
+                          max={250}
                           step={5}
                           value={priceRange}
                           onValueChange={(val: number[]) => {
@@ -475,10 +486,19 @@ function PhotoEditorContent() {
                               setPriceRange([Math.min(lo, hi), Math.max(lo, hi)])
                             }
                           }}
+                          onValueCommit={(val: number[]) => {
+                            if (Array.isArray(val) && val.length === 2) {
+                              const [lo, hi] = val as [number, number]
+                              const committed: [number, number] = [Math.min(lo, hi), Math.max(lo, hi)]
+                              setPriceRange(committed)
+                              // Auto-refresh results when price range is committed
+                              void performSearch({ priceRange: committed })
+                            }
+                          }}
                         />
                         {(() => {
                           const [lo, hi] = priceRange
-                          const min = 0, max = 1000
+                          const min = 0, max = 250
                           const pct = (v: number) => ((v - min) / (max - min)) * 100
                           return (
                             <>
