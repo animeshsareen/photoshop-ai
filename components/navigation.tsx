@@ -66,7 +66,7 @@ export default function Navigation() {
             {/* Brand should always take user to the public landing page */}
             <Link href="/landing" className="flex items-center space-x-2" aria-label="Go to landing page">
               <Image className="h-6 w-6" />
-              <span className="font-bold text-lg">PhotoshopAI</span>
+              <span className="font-bold text-lg">ToolPic</span>
             </Link>
             {/* Tools dropdown */}
             <div className="relative" ref={dropdownRef}>
