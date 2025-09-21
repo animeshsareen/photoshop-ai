@@ -78,7 +78,7 @@ export default function Navigation() {
                 aria-label="Tools"
               >
                 <Wrench className="h-4 w-4 mr-1" />
-                Tools
+                Explore
                 <ChevronDown 
                   className={cn(
                     "h-4 w-4 ml-1 transition-transform duration-200",
