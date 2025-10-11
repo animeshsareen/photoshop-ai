@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
 
     // Prepare Gemini model (used for TryOn and DeClutter)
     const model = genAI?.getGenerativeModel({
-      model: "gemini-2.5-flash-image-preview",
+      model: "gemini-2.5-flash-image",
     })
     // (model availability check moved below after mode resolution)
 

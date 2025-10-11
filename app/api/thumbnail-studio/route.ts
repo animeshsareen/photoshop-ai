@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
 
     // Prepare Gemini model
     const model = genAI?.getGenerativeModel({
-      model: "gemini-2.5-flash-image-preview",
+      model: "gemini-2.5-flash-image",
     })
 
     if (!genAI || !model) {

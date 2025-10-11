@@ -67,8 +67,8 @@ export default function LandingContent() {
           <h1 id="hero-heading" className="text-balance text-5xl md:text-6xl font-bold tracking-tight">
             Try your clothes <span className="text-primary">with AI</span>
           </h1>
-          <p className="text-lg md:text-l text-muted-foreground max-w-2xl mx-auto">
-            Virtual try‑ons, clothing search, photo restoration, and a freeform image editor.
+          <p className="text-lg md:text-l text-muted-foreground max-w-3xl mx-auto">
+            Virtual try‑ons, background declutter, photo restoration, and a freeform image editor.
           </p>
           <div className="flex flex-col items-center gap-6 pt-2" aria-label="Primary actions">
             {/* Primary Get Started button */}
