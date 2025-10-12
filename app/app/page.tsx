@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
 // Textarea removed for virtual try-on flow
-import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle } from "lucide-react"
+import { Upload, Wand2, Download, Loader2, X, AlertCircle, CheckCircle, LayoutGrid, PanelsLeftRight, ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
 // Credit badge is now shown in the top navigation
 import UserProfile from "@/components/user-profile"
@@ -95,6 +95,8 @@ function PhotoEditorContent() {
   const [gender, setGender] = useState<'men' | 'women'>('men')
   // Price range [min, max]
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 250])
+  const [viewMode, setViewMode] = useState<'grid' | 'carousel'>('grid')
+  const [carouselIndex, setCarouselIndex] = useState(0)
 
   const performSearch = async (opts?: { gender?: 'men' | 'women'; priceRange?: [number, number] }) => {
     const q = searchQuery.trim()
@@ -115,6 +117,7 @@ function PhotoEditorContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`)
       setResults(data.items || [])
+      setCarouselIndex(0)
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Search failed')
     } finally {
@@ -174,6 +177,12 @@ function PhotoEditorContent() {
   }
 
   useEffect(() => { (async () => { try { const res = await fetch('/api/credits', { cache: 'no-store' }); if (res.ok) { const j = await res.json(); if (typeof j.credits === 'number') setCredits(j.credits) } } catch {} })() }, [])
+  useEffect(() => {
+    setCarouselIndex((prev) => {
+      if (!results.length) return 0
+      return Math.min(prev, results.length - 1)
+    })
+  }, [results.length])
 
   const processSingleFile = async (file: File, slot: 'you' | 'clothing') => {
     setUploadError(null)
@@ -465,8 +474,8 @@ function PhotoEditorContent() {
                         className="px-2 py-2 rounded-md border bg-background text-sm"
                         aria-label="Gender"
                       >
-                        <option value="men">Men</option>
-                        <option value="women">Women</option>
+                        <option value="men">man</option>
+                        <option value="women">woman</option>
                       </select>
                       <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="slim-fit black turtleneck sweater" className="flex-1 px-3 py-2 rounded-md border bg-background text-sm" />
                       <Button type="submit" disabled={!searchQuery.trim() || isSearching} variant="secondary">{isSearching ? (<><Loader2 className="h-4 w-4 animate-spin mr-2"/>Searching</>) : 'Search'}</Button>
@@ -521,48 +530,164 @@ function PhotoEditorContent() {
                     </div>
                     {searchError && <p className="text-xs text-destructive">{searchError}</p>}
                     {results.length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {results.map((r,i)=>{
-                          return (
-                            <div
-                              key={i}
-                              className="relative border rounded-lg overflow-hidden bg-muted group cursor-pointer"
-                              role="button"
-                              tabIndex={0}
-                              aria-label={r.title}
-                              title={r.title}
-                              onClick={(e)=>{ e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) }}
-                              onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) } }}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={(r as any).image} alt={r.title} className="w-full h-40 md:h-56 object-cover transition-transform group-hover:scale-105" />
-                              {/* Darken image on hover only */}
-                              <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
-                              {/* Brand and price stacked at bottom on hover */}
-                              <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <div className="bg-black/60 text-white text-[11px] leading-snug rounded px-2 py-1">
-                                  <div className="truncate">{r.brand || 'Brand'}</div>
-                                  <div className="font-semibold">{typeof r.price === 'number' ? `$${r.price}` : (r.price || '')}</div>
+                      <div className="relative pb-12">
+                        <div className="absolute bottom-0 left-0 flex items-center gap-2 rounded-full border border-border bg-background/90 p-1 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={() => setViewMode('grid')}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary ${viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            aria-pressed={viewMode === 'grid'}
+                            aria-label="Show results as gallery"
+                            title="Gallery view"
+                          >
+                            <LayoutGrid className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewMode('carousel')}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary ${viewMode === 'carousel' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            aria-pressed={viewMode === 'carousel'}
+                            aria-label="Show results as carousel"
+                            title="Carousel view"
+                          >
+                            <PanelsLeftRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {viewMode === 'grid' ? (
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {results.map((r,i)=>{
+                              return (
+                                <div
+                                  key={i}
+                                  className="group relative border rounded-lg bg-muted cursor-pointer"
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label={r.title}
+                                  title={r.title}
+                                  onClick={(e)=>{ e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) }}
+                                  onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRemoteImage((r as any).highResImage || (r as any).image, r.title, i) } }}
+                                >
+                                  <div className="relative overflow-hidden rounded-lg">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={(r as any).image} alt={r.title} className="w-full h-40 md:h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
+                                    {/* Darken image on hover only */}
+                                    <div className="pointer-events-none absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                                    {/* Shop button opens Google Shopping */}
+                                    {(() => {
+                                      const shoppingUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
+                                      return (
+                                        <a
+                                          href={shoppingUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e)=>{ e.stopPropagation() }}
+                                          className="pointer-events-none absolute top-2 left-2 z-10 text-[10px] px-2 py-1 rounded-full border border-white/40 bg-black/60 text-white opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                                        >
+                                          {importingIndex===i ? 'Importing…' : 'Shop'}
+                                        </a>
+                                      )
+                                    })()}
+                                  </div>
+                                  <div className="pointer-events-none absolute -top-3 -right-3 z-20 opacity-0 transition-all duration-200 group-hover:-translate-y-[2px] group-hover:opacity-100 group-focus-within:-translate-y-[2px] group-focus-within:opacity-100">
+                                    <div className="rounded-full border border-border/60 bg-background/95 px-3 py-1 text-right text-[11px] leading-snug text-foreground shadow-md">
+                                      <div className="truncate uppercase tracking-wide text-muted-foreground">{r.brand || 'Brand'}</div>
+                                      <div className="text-sm font-semibold">{typeof r.price === 'number' ? `$${r.price}` : (r.price || '')}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          (() => {
+                            const current = results[carouselIndex]
+                            if (!current) return null
+                            const prevItem = carouselIndex > 0 ? results[carouselIndex - 1] : null
+                            const nextItem = carouselIndex < results.length - 1 ? results[carouselIndex + 1] : null
+                            const shoppingUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent([current.title, (current as any).brand].filter(Boolean).join(' '))}`
+                            return (
+                              <div className="rounded-3xl border border-border/60 bg-muted/30 px-4 py-8 sm:px-8">
+                                <div className="flex items-center justify-center gap-6 lg:gap-12">
+                                  {prevItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCarouselIndex((idx) => Math.max(0, idx - 1))}
+                                      className="hidden sm:block h-48 w-28 overflow-hidden rounded-2xl border border-border/70 bg-background/60 opacity-60 transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                                      aria-label="View previous clothing result"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={(prevItem as any).image} alt={prevItem.title} className="h-full w-full object-cover" />
+                                    </button>
+                                  )}
+                                  <div className="relative group">
+                                    <div
+                                      className="relative w-full max-w-xs sm:max-w-sm aspect-[3/4] overflow-hidden rounded-[28px] border border-border/60 bg-background shadow-lg cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                                      role="button"
+                                      tabIndex={0}
+                                      aria-label={current.title}
+                                      title={current.title}
+                                      onClick={(e)=>{ e.preventDefault(); selectRemoteImage((current as any).highResImage || (current as any).image, current.title, carouselIndex) }}
+                                      onKeyDown={(e)=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRemoteImage((current as any).highResImage || (current as any).image, current.title, carouselIndex) } }}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={(current as any).highResImage || (current as any).image} alt={current.title} className="h-full w-full object-cover" />
+                                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/25" />
+                                      <a
+                                        href={shoppingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e)=>{ e.stopPropagation() }}
+                                        className="absolute top-4 left-4 rounded-full border border-white/30 bg-black/50 px-3 py-1 text-[11px] uppercase tracking-wide text-white transition-colors hover:bg-black/70"
+                                      >
+                                        {importingIndex===carouselIndex ? 'Importing…' : 'Shop'}
+                                      </a>
+                                    </div>
+                                    <div className="pointer-events-none absolute -top-4 -right-4 z-30 rounded-full border border-border/60 bg-background/95 px-3 py-1 text-right text-[11px] leading-snug text-foreground shadow-md transition-transform duration-200 group-hover:-translate-y-[2px]">
+                                      <div className="uppercase tracking-wide text-muted-foreground">{current.brand || 'Brand'}</div>
+                                      <div className="text-sm font-semibold">{typeof current.price === 'number' ? `$${current.price}` : (current.price || '')}</div>
+                                    </div>
+                                  </div>
+                                  {nextItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCarouselIndex((idx) => Math.min(results.length - 1, idx + 1))}
+                                      className="hidden sm:block h-48 w-28 overflow-hidden rounded-2xl border border-border/70 bg-background/60 opacity-60 transition-all hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                                      aria-label="View next clothing result"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={(nextItem as any).image} alt={nextItem.title} className="h-full w-full object-cover" />
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="mt-8 flex items-center justify-center gap-4">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => setCarouselIndex((idx) => Math.max(0, idx - 1))}
+                                    disabled={carouselIndex === 0}
+                                    aria-label="Previous clothing result"
+                                  >
+                                    <ChevronLeft className="h-4 w-4" />
+                                  </Button>
+                                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    {carouselIndex + 1} / {results.length}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => setCarouselIndex((idx) => Math.min(results.length - 1, idx + 1))}
+                                    disabled={carouselIndex === results.length - 1}
+                                    aria-label="Next clothing result"
+                                  >
+                                    <ChevronRight className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </div>
-                              {/* Shop button opens Google Shopping */}
-                              {(() => {
-                                const shoppingUrl = `https://www.google.com/search?tbm=shop&q=${encodeURIComponent([r.title, (r as any).brand].filter(Boolean).join(' '))}`
-                                return (
-                                  <a
-                                    href={shoppingUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e)=>{ e.stopPropagation() }}
-                                    className="absolute top-1 right-1 z-10 text-[10px] px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >
-                                    {importingIndex===i ? 'Importing…' : 'Shop'}
-                                  </a>
-                                )
-                              })()}
-                            </div>
-                          )
-                        })}
+                            )
+                          })()
+                        )}
                       </div>
                     )}
                     {!isSearching && results.length === 0 && (searchQuery.trim() ? <p className="text-xs text-muted-foreground">No matches. Refine with a color & category.</p> : <p className="text-xs text-muted-foreground">Describe a garment to search real product photos.</p>)}
