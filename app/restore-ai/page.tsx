@@ -14,6 +14,7 @@ import { formatFileSize, compressAndValidateImage, MAX_IMAGE_SIZE } from '@/lib/
 import SubsectionEditor, { SubsectionEditorValue } from '@/components/subsection-editor'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { BeforeAfterSlider } from '@/components/before-after-slider'
 
 interface SelectedImage {
   id: string
@@ -48,7 +49,6 @@ function RestoreAIContent() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const [isSelectingSubsection, setIsSelectingSubsection] = useState(false)
   const [subsectionValue, setSubsectionValue] = useState<SubsectionEditorValue | null>(null)
-  const [showBeforeAfter, setShowBeforeAfter] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const openFileDialog = (e?: React.MouseEvent) => { if (e) e.stopPropagation(); fileInputRef.current?.click() }
@@ -287,42 +287,40 @@ function RestoreAIContent() {
             <div className="space-y-6 sticky top-8 self-start">
               <Card className="min-h-[400px] flex flex-col">
                 <CardContent className="p-6 flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-foreground">Result</h3>
-                    {restoredImage && image && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowBeforeAfter(!showBeforeAfter)}
-                      >
-                        {showBeforeAfter ? 'Show After' : 'Show Before'}
-                      </Button>
-                    )}
-                  </div>
-                  <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                    {restoredImage ? (
-                      <Image 
-                        src={showBeforeAfter && image ? image.data : restoredImage} 
-                        alt={showBeforeAfter ? "Original image" : "Restored image"} 
-                        fill 
-                        className="object-cover" 
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Result</h3>
+                  <div className="flex-1">
+                    {restoredImage && image ? (
+                      <BeforeAfterSlider
+                        beforeSrc={image.data}
+                        afterSrc={restoredImage}
+                        beforeAlt="Original image"
+                        afterAlt="Restored image"
+                        beforeLabel="Before"
+                        afterLabel="Restored"
+                        className="w-full aspect-square"
                       />
-                    ) : isProcessing ? (
-                      <div className="flex flex-col items-center gap-3 w-full px-8">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        <Progress value={progress} className="w-full h-2" />
-                        <p className="text-xs text-muted-foreground">
-                          Restoring... {progress.toFixed(0)}%
-                          {remainingSeconds !== null && remainingSeconds > 0
-                            ? ` • ~${remainingSeconds}s remaining`
-                            : remainingSeconds === 0
-                            ? ' • Finalizing...'
-                            : ''}
-                        </p>
-                      </div>
                     ) : (
-                      <div className="text-sm text-muted-foreground text-center px-4">
-                        {image ? 'Click Restore Photo to restore your image.' : 'Upload an image to begin.'}
+                      <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                        {restoredImage ? (
+                          <Image src={restoredImage} alt="Restored image" fill className="object-cover" />
+                        ) : isProcessing ? (
+                          <div className="flex flex-col items-center gap-3 w-full px-8">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <Progress value={progress} className="w-full h-2" />
+                            <p className="text-xs text-muted-foreground">
+                              Restoring... {progress.toFixed(0)}%
+                              {remainingSeconds !== null && remainingSeconds > 0
+                                ? ` • ~${remainingSeconds}s remaining`
+                                : remainingSeconds === 0
+                                ? ' • Finalizing...'
+                                : ''}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground text-center px-4">
+                            {image ? 'Click Restore Photo to restore your image.' : 'Upload an image to begin.'}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

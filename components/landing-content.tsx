@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video } from "lucide-react"
+import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video, Sparkles, Maximize2, Eraser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
@@ -53,6 +53,21 @@ const FEATURES = [
     title: "Fast Pipeline",
     desc: "Built-in image compression and quick generation.",
   },
+  {
+    icon: <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />,
+    title: "Studio Headshots",
+    desc: "Transform casual photos into polished portraits.",
+  },
+  {
+    icon: <Eraser className="h-6 w-6 text-primary" aria-hidden="true" />,
+    title: "Instant Transparency",
+    desc: "Remove backgrounds and export ready-to-use transparent PNGs.",
+  },
+  {
+    icon: <Maximize2 className="h-6 w-6 text-primary" aria-hidden="true" />,
+    title: "High-Res Sharpening",
+    desc: "Increase resolution up to 4× while preserving key details.",
+  },
 ]
 
 export default function LandingContent() {
@@ -68,7 +83,7 @@ export default function LandingContent() {
             Try your clothes <span className="text-primary">with AI</span>
           </h1>
           <p className="text-lg md:text-l text-muted-foreground max-w-3xl mx-auto">
-            Virtual try‑ons, background declutter, photo restoration, and a freeform image editor.
+            Virtual try‑ons, background declutter, headshot generation, photo restoration, image sharpening, and a freeform image editor.
           </p>
           <div className="flex flex-col items-center gap-6 pt-2" aria-label="Primary actions">
             {/* Primary Get Started button */}
@@ -87,7 +102,7 @@ export default function LandingContent() {
             )}
             
             {/* 4 tool buttons in a 2x2 grid */}
-            <div className="grid grid-cols-2 gap-3 max-w-md">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
               <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-free-edit">
                 <Link href="/free-edit" prefetch>
                   <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
@@ -106,6 +121,21 @@ export default function LandingContent() {
               <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-thumbnail-studio">
                 <Link href="/thumbnail-studio" prefetch>
                   <Video className="h-5 w-5 mr-2" /> ThumbnailStudio
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-transparent">
+                <Link href="/transparent" prefetch>
+                  <Eraser className="h-5 w-5 mr-2" /> Transparent
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-headshotted">
+                <Link href="/headshotted" prefetch>
+                  <Sparkles className="h-5 w-5 mr-2" /> Headshotted
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-upscale">
+                <Link href="/upscale" prefetch>
+                  <Maximize2 className="h-5 w-5 mr-2" /> Sharpen
                 </Link>
               </Button>
             </div>
@@ -171,7 +201,7 @@ export default function LandingContent() {
         <section className="mt-40 text-center" aria-labelledby="cta-end-heading">
           <h2 id="cta-end-heading" className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Ready to Experiment?</h2>
           <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-            Jump straight into virtual try-ons, restore old photos, or try OpenEdit for natural language editing.
+            Jump straight into virtual try-ons, restore old photos, generate headshots, or try OpenEdit for natural language editing.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button asChild size="lg" data-testid="cta-bottom-primary">
@@ -188,6 +218,12 @@ export default function LandingContent() {
             </Button>
             <Button variant="outline" asChild size="lg" data-testid="cta-bottom-thumbnail-studio">
               <Link href="/thumbnail-studio" prefetch>ThumbnailStudio</Link>
+            </Button>
+            <Button variant="outline" asChild size="lg" data-testid="cta-bottom-headshotted">
+              <Link href="/headshotted" prefetch>Headshotted</Link>
+            </Button>
+            <Button variant="outline" asChild size="lg" data-testid="cta-bottom-upscale">
+              <Link href="/upscale" prefetch>Sharpen</Link>
             </Button>
           </div>
         </section>
