@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Image, LogOut, LogIn, Shirt, Paintbrush, Video, RefreshCw, Sparkles, ChevronDown, Wrench, Maximize2, Eraser } from "lucide-react"
+import { Image, LogOut, LogIn, Shirt, Paintbrush, Video, RefreshCw, Sparkles, ChevronDown, Wrench, Maximize2, Palette } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -128,12 +128,6 @@ export default function Navigation() {
                       ThumbnailStudio
                     </Link>
                   </Button>
-                  <Button asChild variant="ghost" size="sm" className="w-full justify-start px-3 py-2 h-auto" aria-label="Transparent">
-                    <Link href="/transparent" prefetch onClick={() => setIsToolsOpen(false)}>
-                      <Eraser className="h-4 w-4 mr-2" />
-                      Transparent
-                    </Link>
-                  </Button>
                   <Button asChild variant="ghost" size="sm" className="w-full justify-start px-3 py-2 h-auto" aria-label="Sharpen">
                     <Link href="/upscale" prefetch onClick={() => setIsToolsOpen(false)}>
                       <Maximize2 className="h-4 w-4 mr-2" />
@@ -144,6 +138,12 @@ export default function Navigation() {
                     <Link href="/headshotted" prefetch onClick={() => setIsToolsOpen(false)}>
                       <Sparkles className="h-4 w-4 mr-2" />
                       Headshotted
+                    </Link>
+                  </Button>
+                  <Button asChild variant="ghost" size="sm" className="w-full justify-start px-3 py-2 h-auto" aria-label="Ghiblify">
+                    <Link href="/ghiblify" prefetch onClick={() => setIsToolsOpen(false)}>
+                      <Palette className="h-4 w-4 mr-2" />
+                      Ghiblify
                     </Link>
                   </Button>
                 </div>

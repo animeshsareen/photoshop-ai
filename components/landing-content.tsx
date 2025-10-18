@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video, Sparkles, Maximize2, Eraser } from "lucide-react"
+import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video, Sparkles, Maximize2, Eraser, Palette } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
@@ -68,6 +68,11 @@ const FEATURES = [
     title: "High-Res Sharpening",
     desc: "Increase resolution up to 4× while preserving key details.",
   },
+  {
+    icon: <Palette className="h-6 w-6 text-primary" aria-hidden="true" />,
+    title: "Ghibli Magic",
+    desc: "Repaint photos in a Studio Ghibli style and auto-upscale the result.",
+  },
 ]
 
 export default function LandingContent() {
@@ -102,7 +107,7 @@ export default function LandingContent() {
             )}
             
             {/* 4 tool buttons in a 2x2 grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-w-2xl">
               <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-free-edit">
                 <Link href="/free-edit" prefetch>
                   <Paintbrush className="h-5 w-5 mr-2" /> OpenEdit
@@ -136,6 +141,11 @@ export default function LandingContent() {
               <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-upscale">
                 <Link href="/upscale" prefetch>
                   <Maximize2 className="h-5 w-5 mr-2" /> Sharpen
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-ghiblify">
+                <Link href="/ghiblify" prefetch>
+                  <Palette className="h-5 w-5 mr-2" /> Ghiblify
                 </Link>
               </Button>
             </div>
