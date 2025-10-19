@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { GoogleGenerativeAI } from "@google/generative-ai"
-import OpenAI from "openai"
-import { toFile } from "openai/uploads"
+import Replicate from "replicate"
 import { getSupabaseAdmin } from "@/lib/supabase"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
 import * as path from "path"
@@ -16,7 +15,123 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
+
+const replicateToken = process.env.REPLICATE_API_TOKEN
+
+if (!replicateToken) {
+  console.error("[open-edit] Missing REPLICATE_API_TOKEN environment variable")
+}
+
+const replicateClient = replicateToken ? new Replicate({ auth: replicateToken }) : null
+
+const FLUX_KONTEXT_MODEL_ID = "black-forest-labs/flux-kontext-pro"
+
+type ResolvedReplicateOutput = {
+  remoteUrl: string | null
+  dataUrl: string | null
+}
+
+async function toDataUrlFromResponse(res: Response) {
+  const arrayBuffer = await res.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const mimeType = res.headers.get("content-type") || "image/png"
+  const base64 = buffer.toString("base64")
+  return `data:${mimeType};base64,${base64}`
+}
+
+async function resolveReplicateOutput(output: any): Promise<ResolvedReplicateOutput> {
+  let remoteUrl: string | null = null
+  let dataUrl: string | null = null
+  const visited = new Set<any>()
+
+  const walk = async (value: any): Promise<void> => {
+    if (value == null || (remoteUrl && dataUrl)) {
+      return
+    }
+
+    if (typeof value === "string") {
+      if (value.startsWith("data:")) {
+        if (!dataUrl) dataUrl = value
+      } else if (!remoteUrl) {
+        remoteUrl = value
+      }
+      return
+    }
+
+    if (typeof value !== "object") {
+      return
+    }
+
+    if (visited.has(value)) {
+      return
+    }
+    visited.add(value)
+
+    const maybeUrl = (value as any).url
+    if (typeof maybeUrl === "function" && !remoteUrl) {
+      try {
+        const result = await maybeUrl.call(value)
+        await walk(result)
+      } catch (err) {
+        console.warn("[open-edit] Failed to resolve url() from replicate output", err)
+      }
+    } else if (typeof maybeUrl === "string" && !remoteUrl) {
+      remoteUrl = maybeUrl
+    }
+
+    if (typeof (value as any).arrayBuffer === "function" && !dataUrl) {
+      try {
+        const buffer = Buffer.from(await (value as any).arrayBuffer())
+        const mimeType = (value as any).type || "image/png"
+        dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`
+      } catch (err) {
+        console.warn("[open-edit] Failed to convert file-like replicate output", err)
+      }
+    }
+
+    const candidateKeys = ["image", "images", "output", "result", "data", "file", "files"]
+    for (const key of candidateKeys) {
+      if (key in (value as Record<string, unknown>)) {
+        await walk((value as Record<string, unknown>)[key])
+        if (remoteUrl && dataUrl) return
+      }
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        await walk(item)
+        if (remoteUrl && dataUrl) return
+      }
+    } else {
+      for (const key of Object.keys(value as Record<string, unknown>)) {
+        if (candidateKeys.includes(key)) continue
+        await walk((value as Record<string, unknown>)[key])
+        if (remoteUrl && dataUrl) return
+      }
+    }
+  }
+
+  await walk(output)
+
+  if (!dataUrl && remoteUrl) {
+    try {
+      const response = await fetch(remoteUrl)
+      if (response.ok) {
+        dataUrl = await toDataUrlFromResponse(response)
+      } else {
+        console.warn("[open-edit] Failed to fetch replicate asset", response.status, response.statusText)
+      }
+    } catch (err) {
+      console.warn("[open-edit] Error fetching replicate asset", err)
+    }
+  }
+
+  if (!remoteUrl && dataUrl && dataUrl.startsWith("data:")) {
+    remoteUrl = dataUrl
+  }
+
+  return { remoteUrl, dataUrl }
+}
 
 // Server-side image compression function
 async function compressImage(inputPath: string, outputPath: string, maxWidth = 800, quality = 70) {
@@ -26,25 +141,6 @@ async function compressImage(inputPath: string, outputPath: string, maxWidth = 8
     .toFile(outputPath);
   
   return outputPath;
-}
-
-// OpenAI Images API accepts only JPEG, PNG, WEBP
-const SUPPORTED_OPENAI_MIME = new Set(["image/jpeg", "image/png", "image/webp"])
-
-// Ensure buffer + filename + mime are acceptable to OpenAI; convert if needed
-async function ensureSupportedImage(buffer: Buffer, originalMime?: string | null, originalName?: string | null) {
-  const inMime = (originalMime || "").toLowerCase()
-  let outBuf = buffer
-  let outMime = inMime
-  let outName = originalName || "image.png"
-  if (!SUPPORTED_OPENAI_MIME.has(inMime)) {
-    // Convert unknown or unsupported format (e.g., HEIC, octet-stream) to PNG
-    outBuf = await sharp(buffer).toFormat("png").toBuffer()
-    outMime = "image/png"
-    const parsed = path.parse(outName)
-    outName = `${parsed.name || "image"}.png`
-  }
-  return { buffer: outBuf, mime: outMime, name: outName }
 }
 
 // Detect if the request likely originates from a mobile device
@@ -76,7 +172,7 @@ export async function POST(request: NextRequest) {
   try {
     console.log("[v0] API route called")
 
-    // Note: We only require Gemini for TryOn; OpenEdit can use OpenAI
+    // Note: We only require Gemini for TryOn; OpenEdit now uses Replicate
 
   const formData = await request.formData()
     const userPrompt = (formData.get("prompt") as string | null)?.trim() || ""
@@ -291,17 +387,6 @@ export async function POST(request: NextRequest) {
     })
     // (model availability check moved below after mode resolution)
 
-  const baseSystemPrompt = `You are an advanced image editing and generation system.  
-The user can upload multiple reference images, and you have just read their text prompt describing desired edits. There may optionally be drawings or shapes on top of the images to highlight areas for modification.  
-
-Your task:  
-1. Analyze all uploaded reference images together as context.  
-2. Interpret the user’s prompt carefully, ensuring that the requested edits are applied to the correct regions and in a realistic, cohesive way.  
-3. If the user has provided drawings or shapes, treat them as visual instructions that indicate where and how to apply changes.  
-4. Always generate a single, unified output image that incorporates the user’s edits while preserving the overall quality and integrity of the original references.  
-
-Output only the final edited image—do not include extra text, overlays, or intermediate steps.`
-
     // TryMyClothes: dedicated virtual try-on system prompt
     const tryOnSystemPrompt = `You are a virtual fashion try-on assistant. You will always receive exactly two input images:
   1. PERSON photo (the model) – preserve identity, body shape, pose, lighting, and background.
@@ -333,7 +418,7 @@ Deliver only the final edited image.`
     const isDeClutterMode = !!isDeClutterRequested
     if ((isTryOnMode || isDeClutterMode) && !model) {
       console.error('[v0] Gemini model unavailable or GEMINI_API_KEY not set')
-      return NextResponse.json({ error: 'GEMINI model not available or GEMINI_API_KEY not configured', suggestion: 'Ensure GEMINI_API_KEY and model permissions are correct, or switch to OpenAI provider.' }, { status: 502 })
+      return NextResponse.json({ error: 'GEMINI model not available or GEMINI_API_KEY not configured', suggestion: 'Ensure GEMINI_API_KEY and model permissions are correct, or try again with the Replicate provider.' }, { status: 502 })
     }
     let editPrompt: string
     if (isTryOnMode) {
@@ -349,11 +434,19 @@ Deliver only the final edited image.`
         editPrompt += `\n\nA selection mask was provided. ONLY clean inside the white (selected) area; keep all other pixels 100% identical to the original image.`
       }
     } else {
-      // OpenEdit: use base prompt and optional user instructions
-      editPrompt = userPrompt ? `${baseSystemPrompt}\n\nUSER ADDITIONAL INSTRUCTIONS ():\n${userPrompt}` : baseSystemPrompt
-      if (maskDataUrl) {
-        editPrompt += `\n\nA selection mask was provided. ONLY apply changes inside the white (selected) area of the mask; keep all other pixels 100% identical to the original person image.`
+      // OpenEdit: build instruction prompt for Flux Kontext model
+      const promptSegments: string[] = [
+        "Transform the uploaded photo while preserving core subject identity and overall realism.",
+      ]
+      if (userPrompt) {
+        promptSegments.push(userPrompt)
+      } else {
+        promptSegments.push("Apply tasteful stylistic enhancements suited to the requested edit.")
       }
+      if (maskDataUrl) {
+        promptSegments.push("Only modify the region indicated by the provided mask; keep all other pixels untouched.")
+      }
+      editPrompt = promptSegments.join(" ").trim()
     }
 
     console.log("[v0] Dispatching edit request to provider")
@@ -386,94 +479,58 @@ Deliver only the final edited image.`
           }
         }
         response = await model.generateContent(geminiInputs as any)
-        console.log(`[$v0] Gemini API call successful (${isTryOnMode ? 'try-on' : 'declutter'})`)
+        console.log(`[$v0] Gemini API call successful (${isTryOnMode ? "try-on" : "declutter"})`)
       } else {
-        if (!openai) {
-          // Refund the credit if OpenAI isn't configured (idempotent)
+        if (!replicateClient) {
+          // Refund the credit if Replicate isn't configured (idempotent)
           try {
             if (userEmail) await modifyUserCredits(userEmail, 1, "refund:edit-image", `${idempotencyKey}:refund`)
           } catch {}
-          return NextResponse.json({ error: "OPENAI_API_KEY environment variable is not configured" }, { status: 500 })
+          return NextResponse.json({ error: "Replicate client not configured" }, { status: 500 })
         }
 
-  // Prepare base image and dimensions
-  const baseImage = compressedImages[0]
-  const baseBuffer = Buffer.from(await baseImage.arrayBuffer())
-  const baseMeta = await sharp(baseBuffer).metadata()
-  const width = baseMeta.width || 1024
-  const height = baseMeta.height || 1024
-
-        // Build OpenAI inputs
-        let maskFile: File | undefined
-        if (maskDataUrl) {
-          try {
-            const maskBase64 = maskDataUrl.split(",")[1]
-            const maskBuffer = Buffer.from(maskBase64, "base64")
-            // Create transparent PNG mask for OpenAI edits: transparent (0 alpha) where edits ALLOWED
-            // Our mask has white for selected area -> convert white to alpha=0, others alpha=255
-            const alphaRaw = await sharp(maskBuffer)
-              .resize({ width, height })
-              .greyscale()
-              .threshold(200)
-              .negate()
-              .raw()
-              .toBuffer({ resolveWithObject: true })
-            const baseWhite = sharp({
-              create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } },
-            })
-            const maskPng = await baseWhite
-              .joinChannel(alphaRaw.data, { raw: { width, height, channels: 1 } })
-              .png()
-              .toBuffer()
-
-            // Use toFile to build InputFile
-            const inputMask = await toFile(maskPng, "mask.png", { type: "image/png" })
-            // Type hack: toFile returns a compatible InputFile; SDK accepts it directly
-            ;(maskFile as any) = inputMask as any
-          } catch (e) {
-            console.warn("[v0] Failed to build OpenAI mask; proceeding without mask", e)
-          }
+        const primaryImage = compressedImages[0]
+        if (!primaryImage) {
+          throw new Error("No image available for OpenEdit processing")
         }
 
-  // Build OpenAI input files; support multiple images per docs when no mask is present
-  const normalizedBase = await ensureSupportedImage(baseBuffer, (baseImage as any).type, baseImage.name)
-  const inputImage = await toFile(normalizedBase.buffer, normalizedBase.name || "image.png", { type: normalizedBase.mime as any })
-        const additionalImages: any[] = []
-        if (!maskDataUrl && compressedImages.length > 1) {
-          for (let i = 1; i < compressedImages.length; i++) {
-            const f = compressedImages[i]
-            const buf = Buffer.from(await f.arrayBuffer())
-            const normalized = await ensureSupportedImage(buf, (f as any).type, f.name)
-            const fileObj = await toFile(normalized.buffer, normalized.name || `image_${i}.png`, { type: normalized.mime as any })
-            additionalImages.push(fileObj as any)
-          }
+        if (compressedImages.length > 1) {
+          console.warn("[v0] OpenEdit received multiple images; only the first will be used with Flux Kontext.")
         }
 
-        let aiResult
-        if (maskFile) {
-          aiResult = await openai.images.edit({
-            model: "gpt-image-1",
-            image: inputImage as any,
-            mask: maskFile as any,
-            prompt: userPrompt || "Apply the requested edits only within the mask",
-            size: "1024x1024",
-          })
+        const replicatePrompt = editPrompt || "Transform the uploaded photo while preserving core subject identity."
+        const replicateInput: Record<string, unknown> = {
+          prompt: replicatePrompt,
+          input_image: primaryImage,
+          output_format: "jpg",
+        }
+
+        console.log("[v0] Calling Replicate Flux Kontext Pro model for OpenEdit")
+        const replicateOutput = await replicateClient.run(FLUX_KONTEXT_MODEL_ID, {
+          input: replicateInput,
+        })
+        const assets = await resolveReplicateOutput(replicateOutput)
+        const finalDataUrl = assets.dataUrl || assets.remoteUrl
+
+        if (!finalDataUrl) {
+          throw new Error("Replicate did not return an image")
+        }
+
+        if (finalDataUrl.startsWith("data:")) {
+          const [header, data] = finalDataUrl.split(",")
+          if (!data) throw new Error("Invalid data URL returned from Replicate")
+          const mimeType = (header.split(";")[0] || "data:image/png").split(":")[1] || "image/png"
+          generatedImageData = data
+          finalMime = mimeType
         } else {
-          const imagesParam = additionalImages.length ? ([inputImage as any, ...additionalImages] as any) : (inputImage as any)
-          aiResult = await openai.images.edit({
-            model: "gpt-image-1",
-            image: imagesParam,
-            prompt: userPrompt || "Apply the requested edits",
-            size: "1024x1024",
-          })
+          const fetchResponse = await fetch(finalDataUrl)
+          if (!fetchResponse.ok) {
+            throw new Error(`Failed to fetch Replicate image (${fetchResponse.status})`)
+          }
+          const buffer = Buffer.from(await fetchResponse.arrayBuffer())
+          finalMime = fetchResponse.headers.get("content-type") || "image/png"
+          generatedImageData = buffer.toString("base64")
         }
-
-        if (!aiResult || !aiResult.data || !aiResult.data.length || !aiResult.data[0].b64_json) {
-          throw new Error("OpenAI did not return an image")
-        }
-
-        generatedImageData = aiResult.data[0].b64_json as string
-        finalMime = "image/png"
       }
     } catch (apiError) {
       console.error("[v0] Provider API call failed:", apiError)
@@ -658,7 +715,7 @@ Deliver only the final edited image.`
         ? `Single image successfully generated from ${compressedImages.length} input image(s) using Gemini`
         : isDeClutterMode
         ? `Background cleaned for ${compressedImages.length} image using Gemini`
-        : `Single image successfully generated from ${compressedImages.length} input image(s) using OpenAI`,
+        : `Single image successfully generated from ${compressedImages.length} input image(s) using Replicate Flux Kontext Pro`,
       usedMask: !!maskDataUrl,
       shapes: shapesMeta || undefined,
       mobileOptimized: mobileClient,
