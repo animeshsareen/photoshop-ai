@@ -9,6 +9,8 @@ import UserProfile from "@/components/user-profile"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { CREDIT_COST_PER_EDIT } from "@/lib/credits"
 import { compressAndValidateImage, formatFileSize, MAX_IMAGE_SIZE } from "@/lib/image-utils"
@@ -23,17 +25,19 @@ interface SelectedImage {
   isCompressed: boolean
 }
 
-const DEFAULT_PROMPT =
-  "Studio Ghibli inspired portrait, vibrant colors, whimsical atmosphere, painterly texture, soft lighting"
+const BASE_PROMPT =
+  "Redesign this room into a cohesive, magazine-quality interior. Preserve the existing architecture and camera angle from the reference image while updating furniture, lighting, textiles, and decor with realistic materials, layered lighting, and a balanced color palette."
 
-const DESIRED_INCREASE = 2
+const PROMPT_PLACEHOLDER =
+  "e.g. Minimalist living room with natural oak accents and soft diffused lighting."
 
-function GhiblifyContent() {
+function RoomCanvasContent() {
   const { user } = useAuth()
   const [image, setImage] = useState<SelectedImage | null>(null)
-  const [ghibliUrl, setGhibliUrl] = useState<string | null>(null)
+  const [roomUrl, setRoomUrl] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [credits, setCredits] = useState(0)
+  const [prompt, setPrompt] = useState<string>("")
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isCompressing, setIsCompressing] = useState(false)
   const [generationStartTime, setGenerationStartTime] = useState<number | null>(null)
@@ -56,7 +60,7 @@ function GhiblifyContent() {
           if (typeof j.credits === "number") setCredits(j.credits)
         }
       } catch {
-        /* ignored */
+        /* ignore */
       }
     })()
   }, [])
@@ -85,7 +89,7 @@ function GhiblifyContent() {
             compressedSize: result.compressedSize,
             isCompressed: result.isCompressed,
           })
-          setGhibliUrl(null)
+          setRoomUrl(null)
           resolve()
         }
         reader.readAsDataURL(result.compressedFile || file)
@@ -116,16 +120,16 @@ function GhiblifyContent() {
 
   const removeImage = () => {
     setImage(null)
-    setGhibliUrl(null)
+    setRoomUrl(null)
   }
 
   const estimateGenerationDuration = (bytes: number) => {
-    if (!bytes) return 8
+    if (!bytes) return 10
     const mb = bytes / (1024 * 1024)
-    const base = 8
-    const perMb = 1.6
+    const base = 10
+    const perMb = 1.8
     const est = base + mb * perMb
-    return Math.min(45, Math.max(6, est))
+    return Math.min(60, Math.max(8, est))
   }
 
   useEffect(() => {
@@ -150,7 +154,7 @@ function GhiblifyContent() {
     }
   }, [isProcessing, generationStartTime, estimatedDuration])
 
-  const handleGenerateGhibli = async () => {
+  const handleGenerateRoom = async () => {
     if (!image) return
 
     try {
@@ -166,7 +170,7 @@ function GhiblifyContent() {
         }
       }
     } catch {
-      /* ignored */
+      /* ignore */
     }
 
     const totalSize = image.compressedSize || image.originalSize
@@ -180,22 +184,24 @@ function GhiblifyContent() {
     try {
       const formData = new FormData()
       formData.append("image", image.file)
-      formData.append("prompt", DEFAULT_PROMPT)
-      formData.append("desired_increase", String(DESIRED_INCREASE))
+      const trimmedPrompt = prompt.trim()
+      if (trimmedPrompt.length > 0) {
+        formData.append("prompt", trimmedPrompt)
+      }
 
-      const response = await fetch("/api/ghiblify", {
+      const response = await fetch("/api/room-canvas", {
         method: "POST",
         body: formData,
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
-        const msg = errorData?.error || "Failed to generate Ghibli style"
+        const msg = errorData?.error || "Failed to generate design"
         throw new Error(msg)
       }
 
       const data = await response.json()
-      setGhibliUrl(data.ghibliUrl)
+      setRoomUrl(data.roomUrl)
       if (typeof data.remainingCredits === "number") {
         setCredits(data.remainingCredits)
       }
@@ -208,23 +214,23 @@ function GhiblifyContent() {
           }
         }
       } catch {
-        /* ignored */
+        /* ignore */
       }
       window.dispatchEvent(new Event("creditsUpdated"))
       setProgress(100)
       setRemainingSeconds(0)
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Ghiblify failed")
+      alert(error instanceof Error ? error.message : "RoomCanvas failed")
     } finally {
       setIsProcessing(false)
     }
   }
 
-  const downloadGhibli = () => {
-    if (!ghibliUrl) return
+  const downloadRoom = () => {
+    if (!roomUrl) return
     const a = document.createElement("a")
-    a.href = ghibliUrl
-    a.download = "ghiblify.png"
+    a.href = roomUrl
+    a.download = "room-canvas.png"
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -235,10 +241,10 @@ function GhiblifyContent() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="text-center flex-1">
-            <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">Ghiblify</h1>
+            <h1 className="text-4xl font-bold text-foreground mb-2 text-balance">RoomCanvas</h1>
             <p className="text-muted-foreground text-lg text-pretty">Welcome back, {user?.name}</p>
             <p className="text-muted-foreground text-lg text-pretty">
-              Turn any photo into a hand-painted Studio Ghibli moment.
+              Redesign your room from a single photo using AI-driven interior styles.
             </p>
           </div>
           <UserProfile />
@@ -272,7 +278,7 @@ function GhiblifyContent() {
                     {!image ? (
                       <>
                         <Upload className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                        <p className="text-sm text-muted-foreground mb-2">Upload one image to ghiblify</p>
+                        <p className="text-sm text-muted-foreground mb-2">Upload one room photo to redesign</p>
                         <div className="text-xs text-muted-foreground space-y-1">
                           <p>Max size: {formatFileSize(MAX_IMAGE_SIZE)}</p>
                           <p>Auto-compression enabled.</p>
@@ -337,11 +343,27 @@ function GhiblifyContent() {
 
               <Card className="border-border">
                 <CardContent className="p-5 space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="room-prompt">Style Prompt (optional)</Label>
+                    <Textarea
+                      id="room-prompt"
+                      placeholder={PROMPT_PLACEHOLDER}
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      maxLength={600}
+                      className="min-h-[120px] italic"
+                    />
+                    <p className="text-[10px] text-muted-foreground text-right">{prompt.length}/600</p>
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank to apply our balanced interior design prompt.
+                      <span className="block text-muted-foreground/80 italic">{}</span>
+                    </p>
+                  </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Credits</span>
                     <span className="font-semibold">{credits}</span>
                   </div>
-                  <Button className="w-full" onClick={handleGenerateGhibli} disabled={!image || isProcessing}>
+                  <Button className="w-full" onClick={handleGenerateRoom} disabled={!image || isProcessing}>
                     {isProcessing ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -371,14 +393,14 @@ function GhiblifyContent() {
                 <CardContent className="p-5 space-y-4">
                   <h4 className="text-md font-semibold text-foreground">Preview</h4>
                   {image ? (
-                    ghibliUrl ? (
+                    roomUrl ? (
                       <BeforeAfterSlider
                         beforeSrc={image.data}
-                        afterSrc={ghibliUrl}
-                        beforeAlt="Original image"
-                        afterAlt="Ghibli styled image"
+                        afterSrc={roomUrl}
+                        beforeAlt="Original room"
+                        afterAlt="Designed room"
                         beforeLabel="Original"
-                        afterLabel="Ghibli"
+                        afterLabel="Designed"
                         className="w-full aspect-square"
                       />
                     ) : (
@@ -397,14 +419,14 @@ function GhiblifyContent() {
                       </div>
                     </div>
                   )}
-                  {ghibliUrl ? (
-                    <Button variant="outline" onClick={downloadGhibli} className="w-full">
+                  {roomUrl ? (
+                    <Button variant="outline" onClick={downloadRoom} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
                       Download PNG
                     </Button>
                   ) : (
                     <p className="text-xs text-muted-foreground text-center">
-                      {image ? "Generate to view the Ghibli result." : "Upload an image to get started."}
+                      {image ? "Generate to view the redesigned room." : "Upload an image to get started."}
                     </p>
                   )}
                 </CardContent>
@@ -414,9 +436,9 @@ function GhiblifyContent() {
                 <CardContent className="p-5 space-y-3 text-sm text-muted-foreground">
                   <h4 className="text-md font-semibold text-foreground">Tips</h4>
                   <ul className="space-y-2">
-                    <li>• Use portraits or clear subjects for the strongest character look.</li>
-                    <li>• Well-lit images with visible facial features improve animation-style details.</li>
-                    <li>• Download the PNG to keep the color-rich final output.</li>
+                    <li>• Use clear room photos with good lighting for best results.</li>
+                    <li>• Include most of the room in-frame to improve layout suggestions.</li>
+                    <li>• Download the PNG to keep the highest quality.</li>
                   </ul>
                 </CardContent>
               </Card>
@@ -428,10 +450,10 @@ function GhiblifyContent() {
   )
 }
 
-export default function GhiblifyPage() {
+export default function RoomCanvasPage() {
   return (
     <ProtectedRoute>
-      <GhiblifyContent />
+      <RoomCanvasContent />
     </ProtectedRoute>
   )
 }

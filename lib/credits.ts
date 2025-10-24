@@ -1,5 +1,6 @@
 export const CREDITS_PER_DOLLAR = 6
 export const CREDIT_COST_PER_EDIT = 1
+export const CREDIT_COST_PIC2VID = 3
 // Number of free credits granted to a brand new user (first sign-in in this browser)
 export const DEFAULT_FREE_CREDITS = 2
 

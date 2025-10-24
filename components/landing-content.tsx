@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video, Sparkles, Maximize2, Eraser, Palette } from "lucide-react"
+import { Wand2, Image, Shield, Zap, Coins, Paintbrush, Shirt, RefreshCw, Video, Sparkles, Maximize2, Eraser, Palette, Film } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DEFAULT_FREE_CREDITS } from "@/lib/credits"
@@ -72,6 +72,11 @@ const FEATURES = [
     icon: <Palette className="h-6 w-6 text-primary" aria-hidden="true" />,
     title: "Ghibli Magic",
     desc: "Repaint photos in a Studio Ghibli style and auto-upscale the result.",
+  },
+  {
+    icon: <Film className="h-6 w-6 text-primary" aria-hidden="true" />,
+    title: "Pic2Vid Motion",
+    desc: "Animate a single frame into short cinematic clips powered by Kling v2.1.",
   },
 ]
 
@@ -146,6 +151,11 @@ export default function LandingContent() {
               <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-ghiblify">
                 <Link href="/ghiblify" prefetch>
                   <Palette className="h-5 w-5 mr-2" /> Ghiblify
+                </Link>
+              </Button>
+              <Button variant="outline" asChild size="lg" className="px-6" data-testid="cta-pic2vid">
+                <Link href="/pic2vid" prefetch>
+                  <Film className="h-5 w-5 mr-2" /> Pic2Vid
                 </Link>
               </Button>
             </div>

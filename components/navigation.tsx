@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
-import { Image, LogOut, LogIn, Shirt, Paintbrush, Video, RefreshCw, Sparkles, ChevronDown, Wrench, Maximize2, Palette } from "lucide-react"
+import { Image, LogOut, LogIn, Shirt, Paintbrush, Video, RefreshCw, Sparkles, ChevronDown, Wrench, Maximize2, Palette, Film, Home } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link"
 import { signOut } from "next-auth/react"
@@ -144,6 +144,18 @@ export default function Navigation() {
                     <Link href="/ghiblify" prefetch onClick={() => setIsToolsOpen(false)}>
                       <Palette className="h-4 w-4 mr-2" />
                       Ghiblify
+                    </Link>
+                  </Button>
+                  <Button asChild variant="ghost" size="sm" className="w-full justify-start px-3 py-2 h-auto" aria-label="RoomCanvas">
+                    <Link href="/room-canvas" prefetch onClick={() => setIsToolsOpen(false)}>
+                      <Home className="h-4 w-4 mr-2" />
+                      RoomCanvas
+                    </Link>
+                  </Button>
+                  <Button asChild variant="ghost" size="sm" className="w-full justify-start px-3 py-2 h-auto" aria-label="Pic2Vid">
+                    <Link href="/pic2vid" prefetch onClick={() => setIsToolsOpen(false)}>
+                      <Film className="h-4 w-4 mr-2" />
+                      Pic2Vid
                     </Link>
                   </Button>
                 </div>
